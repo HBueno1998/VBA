@@ -1,0 +1,2588 @@
+Option Explicit
+
+Public Sub calcularEmissoes()
+On Error GoTo erro
+    Dim inventarioEmissoes As cPropriedade, arrModuloRuralEfetivo() As cModAgropecuario, _
+        arrModuloRural() As cModAgropecuario, moduloRural As cModAgropecuario, _
+        iModuloRural As Integer, jModuloRural As Integer, iModuloAgricultura As Integer, _
+        iModuloFloresta As Integer, iModuloPecuaria As Integer, iModuloAgriculturaFloresta As Integer, _
+        iModuloPreservacao As Integer
+        
+    Dim redimensionar As Boolean, rebanhoCarne As Long, rebanhoLeite As Long, rebanhoOvos As Long, rebanhoEquino As Long
+    Dim erro As Boolean
+    
+    If (controlarProtecao() = True) Then Call pSintese.Unprotect
+    
+    Rem Validação das condições
+    If (pFormularioEmissoes.ListObjects.Count = 0) Then
+        MsgBox "Adicione os módulos agropecuários e forneça as informações necessárias para cálculo das emissões.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+        Exit Sub
+    End If
+    
+    If (pFormularioEmissoes.Range("fe_estado").Value2 = Empty Or pFormularioEmissoes.Range("fe_bioma").Value2 = Empty) Then
+        MsgBox "Os dados de localização da propriedade (Estado e bioma) são obrigatórios.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+        Exit Sub
+    End If
+    
+    With pFormularioEmissoes.ListObjects("tbModulo").DataBodyRange
+        For iModuloRural = 1 To .Rows.Count
+            If ((.Cells(iModuloRural, 3).Value2 = Empty Or .Cells(iModuloRural, 4).Value2 = Empty)) Then
+                MsgBox "Preencha as datas de início e fim dos módulos listados na Tabela 2. Módulos agropecuários.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                Exit Sub
+            End If
+        Next iModuloRural
+    End With
+    
+    If (moduloDisponivel(algodao) = True Or moduloDisponivel(arroz) = True Or moduloDisponivel(cana) = True Or moduloDisponivel(feijao) = True Or _
+        moduloDisponivel(milho) = True Or moduloDisponivel(soja) = True Or moduloDisponivel(trigo) = True Or moduloDisponivel(pastagem) = True) Then
+        With pFormularioEmissoes.ListObjects("tbManejoAgricola").DataBodyRange
+            For iModuloRural = 1 To .Rows.Count
+                For jModuloRural = 3 To .Columns.Count - 1
+                    If (.Cells(iModuloRural, jModuloRural).Value2 = Empty And .Cells(iModuloRural, jModuloRural).Interior.Pattern <> xlPatternLightDown) Then
+                        MsgBox "O preenchimento de todos os campos da Tabela 3.1. Manejo - Agrícola. é obrigatório", _
+                            vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                        Exit Sub
+                    End If
+                Next jModuloRural
+            Next iModuloRural
+        End With
+    End If
+    
+    If (moduloDisponivel(eucalipto) = True Or moduloDisponivel(parica) = True Or moduloDisponivel(pinus) = True Or _
+        moduloDisponivel(seringueira) = True Or moduloDisponivel(teca) = True) Then
+        With pFormularioEmissoes.ListObjects("tbManejoFlorestal").DataBodyRange
+            For iModuloFloresta = 1 To .Rows.Count
+                For jModuloRural = 3 To .Columns.Count
+                    If (.Cells(iModuloFloresta, jModuloRural).Value2 = Empty And .Cells(iModuloFloresta, jModuloRural).Interior.Pattern <> xlPatternLightDown) Then
+                        MsgBox "O preenchimento de todos os campos habilitados para edição da Tabela 3.2. Manejo - Florestal. é obrigatório.", _
+                            vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                        Exit Sub
+                    End If
+                Next jModuloRural
+            Next iModuloFloresta
+        End With
+    End If
+    
+    If (moduloDisponivel(algodao) = True Or moduloDisponivel(arroz) = True Or moduloDisponivel(cana) = True Or moduloDisponivel(feijao) = True Or _
+        moduloDisponivel(milho) = True Or moduloDisponivel(soja) = True Or moduloDisponivel(trigo) = True Or moduloDisponivel(pastagem) = True Or _
+        moduloDisponivel(eucalipto) = True Or moduloDisponivel(parica) = True Or moduloDisponivel(pinus) = True Or _
+        moduloDisponivel(seringueira) = True Or moduloDisponivel(teca) = True) Then
+        With pFormularioEmissoes.ListObjects("tbManejoUsoTerra").DataBodyRange
+            For iModuloRural = 1 To .Rows.Count
+                For jModuloRural = 3 To .Columns.Count
+                    If (.Cells(iModuloRural, jModuloRural).Value2 = Empty And .Cells(iModuloRural, jModuloRural).Interior.Pattern <> xlPatternLightDown) Then
+                        MsgBox "O preenchimento de todos os campos da Tabela '3.3. Manejo - Uso da Terra.' é obrigatório.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                        Exit Sub
+                    End If
+                Next jModuloRural
+            Next iModuloRural
+        End With
+    End If
+    
+    If (moduloDisponivel(pecuaria) = True) Then
+        With pFormularioEmissoes.ListObjects("tbRebanho").DataBodyRange
+            For iModuloRural = 1 To .Rows.Count
+                For jModuloRural = 3 To .Columns.Count
+                    If (.Cells(iModuloRural, jModuloRural).Value2 = Empty) Then
+                        MsgBox "O preenchimento de todos os campos da Tabela 6. Rebanho. é obrigatório.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                        Exit Sub
+                    End If
+                Next jModuloRural
+            Next iModuloRural
+        End With
+    End If
+    
+    If (moduloDisponivel(protecaoPermanente) = True Or _
+        moduloDisponivel(reservaLegal) = True) Then
+        With pFormularioEmissoes.ListObjects("tbComponentePreservacao").DataBodyRange
+            For iModuloRural = 1 To .Rows.Count
+                For jModuloRural = 3 To .Columns.Count
+                    If (.Cells(iModuloRural, jModuloRural).Value2 = Empty) Then
+                        MsgBox "O preenchimento de todos os campos da Tabela 4. Preservação. é obrigatório.", vbOKOnly + vbDefaultButton1 + vbExclamation, "Calcular emissões"
+                        Exit Sub
+                    End If
+                Next jModuloRural
+            Next iModuloRural
+        End With
+    End If
+    
+    Rem é necessário reiniciar as variáveis dos loops
+    iModuloRural = 0
+    iModuloAgricultura = 0
+    iModuloFloresta = 0
+    iModuloAgriculturaFloresta = 0
+    iModuloPecuaria = 0
+    iModuloPreservacao = 0
+    jModuloRural = 0
+    
+    Application.EnableEvents = False
+    Application.EnableAnimations = False
+    Application.ScreenUpdating = False
+        
+    Set inventarioEmissoes = New cPropriedade
+    inventarioEmissoes.estado = pFormularioEmissoes.Range("fe_estado").Value2
+    inventarioEmissoes.bioma = pFormularioEmissoes.Range("fe_bioma").Value2
+    inventarioEmissoes.fitoFisionomia = pFormularioEmissoes.Range("fe_fitofisionomia").Value2
+    inventarioEmissoes.AreaTotal = pFormularioEmissoes.Range("fe_area").Value2
+    
+    Rem Consumo de combustível - Operações internas
+    With pFormularioEmissoes.ListObjects(nomeComponente(combustivelInterno))
+        inventarioEmissoes.coDiesel = .DataBodyRange(.DataBodyRange.Rows.Count, 3).Value2
+        inventarioEmissoes.coBioDieselMistura = .DataBodyRange(.DataBodyRange.Rows.Count, 4).Value2
+        inventarioEmissoes.coGasolina = .DataBodyRange(.DataBodyRange.Rows.Count, 5).Value2
+        inventarioEmissoes.coEtanol = .DataBodyRange(.DataBodyRange.Rows.Count, 6).Value2
+    End With
+    
+    Rem Consumo de combustível - Transporte da produção
+    With pFormularioEmissoes.ListObjects(nomeComponente(combustivelTransporte))
+        inventarioEmissoes.ctDiesel = .DataBodyRange(.DataBodyRange.Rows.Count, 3).Value2
+        inventarioEmissoes.ctBioDieselMistura = .DataBodyRange(.DataBodyRange.Rows.Count, 4).Value2
+        inventarioEmissoes.ctGasolina = .DataBodyRange(.DataBodyRange.Rows.Count, 5).Value2
+        inventarioEmissoes.ctEtanol = .DataBodyRange(.DataBodyRange.Rows.Count, 6).Value2
+    End With
+    
+    Rem Compra de energia elétrica
+    With pFormularioEmissoes.ListObjects(nomeComponente(compraEnergiaEletrica))
+        inventarioEmissoes.ceEnergiaEletrica = .DataBodyRange(.DataBodyRange.Rows.Count, 3).Value2
+    End With
+    
+    ReDim arrModuloRuralEfetivo(pFormularioEmissoes.ListObjects(nomeComponente(modulo)).DataBodyRange.Rows.Count - 1)
+    
+    For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+        Set moduloRural = New cModAgropecuario
+        
+        Rem Módulo rural
+        With pFormularioEmissoes.ListObjects(nomeComponente(componentes.modulo))
+            moduloRural.mModulo = valorModulo(.DataBodyRange(iModuloRural + 1, 1).Value2)
+            moduloRural.mID = .DataBodyRange(iModuloRural + 1, 2).Value2
+            
+            If (.DataBodyRange(iModuloRural + 1, 3).Value2 <> Empty And .DataBodyRange(iModuloRural + 1, 4).Value2 <> Empty) Then
+                moduloRural.mInicio = CDate(.DataBodyRange(iModuloRural + 1, 3).Value2)
+                moduloRural.mInicio = DateSerial(DatePart("yyyy", moduloRural.mInicio), DatePart("m", moduloRural.mInicio), 1)
+
+                moduloRural.mFim = CDate(.DataBodyRange(iModuloRural + 1, 4).Value2)
+                moduloRural.mFim = DateSerial(DatePart("yyyy", moduloRural.mFim), DatePart("m", moduloRural.mFim), 1)
+            End If
+        End With
+        
+        Rem Preenchimento do objeto com os dados do módulo plantado, de rebanho ou de preservação
+        Select Case moduloRural.mModulo
+            Case pecuaria
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.rebanho))
+                    moduloRural.rAnimal = .DataBodyRange(iModuloPecuaria + 1, 3).Value2
+                    moduloRural.rSexoAnimal = .DataBodyRange(iModuloPecuaria + 1, 4).Value2
+                    moduloRural.rIdadeAnimal = .DataBodyRange(iModuloPecuaria + 1, 5).Value2
+                    moduloRural.rNumeroAnimais = CLng(.DataBodyRange(iModuloPecuaria + 1, 6).Value2)
+                    moduloRural.rPesoAnimal = CDbl(.DataBodyRange(iModuloPecuaria + 1, 7).Value2)
+                    
+                    Select Case moduloRural.rAnimal
+                        Case "Bovino de corte", "Bovino reprodutor", _
+                            "Suíno reprodutor industrial", "Suíno reprodutor de subsistência", _
+                            "Suíno em aleitamento industrial", "Suíno em aleitamento de subsistência", _
+                            "Suíno em terminação industrial", "Suíno em terminação de subsistência", "Pinto/frango(a)"
+                            moduloRural.rRendimentoCarne = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                        
+                        Case "Bovino leiteiro"
+                            moduloRural.rRendimentoLeite = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                            
+                        Case "Caprino", "Ovino"
+                            If (moduloRural.rSexoAnimal = "Fêmea") Then
+                                moduloRural.rRendimentoLeite = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                            ElseIf (moduloRural.rSexoAnimal = "Macho") Then
+                                moduloRural.rRendimentoCarne = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                            End If
+                        
+                        Case "Galinha/galo"
+                            If (moduloRural.rSexoAnimal = "Fêmea") Then
+                                moduloRural.rRendimentoOvos = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                            ElseIf (moduloRural.rSexoAnimal = "Macho") Then
+                                moduloRural.rRendimentoCarne = CDbl(.DataBodyRange(iModuloPecuaria + 1, 8).Value2)
+                            End If
+                    End Select
+                    
+                    moduloRural.rManejoDejetos = .DataBodyRange(iModuloPecuaria + 1, 9).Value2
+                    moduloRural.rRebanhoConfinado = .DataBodyRange(iModuloPecuaria + 1, 10).Value2
+                End With
+                iModuloPecuaria = iModuloPecuaria + 1
+            
+            Case protecaoPermanente, reservaLegal
+                Rem Área de preservação
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.preservacao))
+                    moduloRural.pAreaPreservacao = CDbl(.DataBodyRange(iModuloPreservacao + 1, 3).Value2)
+                End With
+                iModuloPreservacao = iModuloPreservacao + 1
+            
+            Case algodao, arroz, cana, feijao, milho, soja, trigo, pastagem
+                Rem Manejo agrícola
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.manejoAgricola))
+                    moduloRural.maAreaAgricola = CDbl(.DataBodyRange(iModuloAgricultura + 1, 3).Value2)
+                    moduloRural.maProdutividadeAgricola = CDbl(.DataBodyRange(iModuloAgricultura + 1, 4).Value2)
+                    moduloRural.maSafraAgricola = .DataBodyRange(iModuloAgricultura + 1, 5).Value2
+                End With
+        
+                Rem Manejo de uso da terra
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.manejoUsoTerra))
+                    moduloRural.musUsoAnteriorTerra = .DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2
+                    moduloRural.musUsoAtualTerra = .DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2
+                    moduloRural.musTempoTransicao = .DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2
+                    moduloRural.musSupressaoVegetacao = .DataBodyRange(iModuloAgriculturaFloresta + 1, 6).Value2
+                    moduloRural.musTexturaSolo = .DataBodyRange(iModuloAgriculturaFloresta + 1, 7).Value2
+                    moduloRural.musTeorArgila = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 8).Value2)
+                    moduloRural.musTeorCarbono = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 9).Value2)
+                    moduloRural.musEstoqueCarbono = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 10).Value2)
+                End With
+                
+                Rem Manejo secundário
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.manejoOutrasInformacoes))
+                    moduloRural.msManejoResiduosVegetais = .DataBodyRange(iModuloAgricultura + 1, 3).Value2
+                    moduloRural.msSolosOrganicos = .DataBodyRange(iModuloAgricultura + 1, 4).Value2
+                    
+                    If (moduloRural.mModulo = arroz) Then
+                        moduloRural.msPreparoSoloArroz = .DataBodyRange(iModuloAgricultura + 1, 5).Value2
+                        moduloRural.msRegimeHidricoArroz = .DataBodyRange(iModuloAgricultura + 1, 6).Value2
+                    End If
+                End With
+                
+                Rem Adubação nitrogenada sintética
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoNitrogenadaSintetica))
+                    moduloRural.anNitrogenioSintetico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.anTeorNitrogenioSintetico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                    moduloRural.anUreia = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2)
+                End With
+                
+                Rem Correção de solo
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoCorrecaoSolo))
+                    moduloRural.csCalcarioCalcitico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.csCalcarioDolomitico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                End With
+                
+                Rem Adubação orgânica
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoorganica))
+                    moduloRural.aoCompostoOrganico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.aoEstercoAves = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                    moduloRural.aoEstercoOutros = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2)
+                    moduloRural.aoOutrosCompostosOrganicos = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 6).Value2)
+                    
+                    If (moduloRural.mModulo = cana) Then
+                        moduloRural.aoVinhacaCana = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 7).Value2)
+                        moduloRural.aoTortaFiltroCana = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 8).Value2)
+                    End If
+                    
+                    If (moduloRural.mModulo = arroz) Then
+                        moduloRural.aoMateriaSecaArroz = .DataBodyRange(iModuloAgriculturaFloresta + 1, 9).Value2
+                        moduloRural.aoMateriaSecaFermentadaArroz = .DataBodyRange(iModuloAgriculturaFloresta + 1, 10).Value2
+                    End If
+                End With
+                
+                Rem Adubação Verde
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoVerde))
+                    moduloRural.avGramineas = CDbl(.DataBodyRange(iModuloAgricultura + 1, 3).Value2)
+                    moduloRural.avLeguminosas = CDbl(.DataBodyRange(iModuloAgricultura + 1, 4).Value2)
+                    moduloRural.avOutros = CDbl(.DataBodyRange(iModuloAgricultura + 1, 5).Value2)
+                End With
+                
+                iModuloAgricultura = iModuloAgricultura + 1
+                iModuloAgriculturaFloresta = iModuloAgriculturaFloresta + 1
+            
+            Case eucalipto, parica, pinus, seringueira, teca
+                Rem Manejo florestal
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.manejoFlorestal))
+                    If (moduloRural.mModulo <> parica) Then _
+                        moduloRural.mfEspecieFlorestal = .DataBodyRange(iModuloFloresta + 1, 3).Value2
+                    moduloRural.mfNumeroArvores = CLng(.DataBodyRange(iModuloFloresta + 1, 4).Value2)
+                    moduloRural.mfAreaFloresta = CDbl(.DataBodyRange(iModuloFloresta + 1, 5).Value2)
+                    moduloRural.mfSistemaCultivoFlorestal = .DataBodyRange(iModuloFloresta + 1, 6).Value2
+                    moduloRural.mfColheitaMadeira = .DataBodyRange(iModuloFloresta + 1, 7).Value2
+                End With
+                
+                Rem Manejo de uso da terra
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.manejoUsoTerra))
+                    moduloRural.musUsoAnteriorTerra = .DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2
+                    moduloRural.musUsoAtualTerra = .DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2
+                    moduloRural.musTempoTransicao = .DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2
+                    moduloRural.musSupressaoVegetacao = .DataBodyRange(iModuloAgriculturaFloresta + 1, 6).Value2
+                    moduloRural.musTexturaSolo = .DataBodyRange(iModuloAgriculturaFloresta + 1, 7).Value2
+                    moduloRural.musTeorArgila = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 8).Value2)
+                    moduloRural.musTeorCarbono = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 9).Value2)
+                    moduloRural.musEstoqueCarbono = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 10).Value2)
+                End With
+                
+                Rem Adubação nitrogenada sintética
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoNitrogenadaSintetica))
+                    moduloRural.anNitrogenioSintetico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.anTeorNitrogenioSintetico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                    moduloRural.anUreia = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2)
+                End With
+                
+                Rem Correção de solo
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoCorrecaoSolo))
+                    moduloRural.csCalcarioCalcitico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.csCalcarioDolomitico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                End With
+                
+                Rem Adubação orgânica
+                With pFormularioEmissoes.ListObjects(nomeComponente(componentes.adubacaoorganica))
+                    moduloRural.aoCompostoOrganico = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 3).Value2)
+                    moduloRural.aoEstercoAves = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 4).Value2)
+                    moduloRural.aoEstercoOutros = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 5).Value2)
+                    moduloRural.aoOutrosCompostosOrganicos = CDbl(.DataBodyRange(iModuloAgriculturaFloresta + 1, 6).Value2)
+                End With
+                
+                iModuloFloresta = iModuloFloresta + 1
+                iModuloAgriculturaFloresta = iModuloAgriculturaFloresta + 1
+        End Select
+        
+        Set arrModuloRuralEfetivo(iModuloRural) = moduloRural
+    Next iModuloRural
+    
+    inventarioEmissoes.ModulosAgropecuarios = arrModuloRuralEfetivo
+    
+    For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+        redimensionar = True
+        If (iModuloRural > 0) Then
+            For jModuloRural = 0 To UBound(arrModuloRural)
+                Rem Se outro módulo de mesma classe já tiver sido criado na coleção, _
+                    somam-se suas emissões ao invés de atribuir um novo objeto à coleção
+                If (arrModuloRuralEfetivo(iModuloRural).mModulo = arrModuloRural(jModuloRural).mModulo) Then
+                    redimensionar = False
+                    Exit For
+                End If
+            Next jModuloRural
+        End If
+        
+        If (redimensionar = True) Then
+            ReDim Preserve arrModuloRural(jModuloRural)
+            Set arrModuloRural(jModuloRural) = New cModAgropecuario
+            arrModuloRural(jModuloRural).mModulo = arrModuloRuralEfetivo(iModuloRural).mModulo
+        End If
+        
+        arrModuloRural(jModuloRural).EE1_Ureia_CO2_DET = _
+            arrModuloRural(jModuloRural).EE1_Ureia_CO2(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_Ureia_CO2
+            
+        arrModuloRural(jModuloRural).EE1_Ureia_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_Ureia_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_Ureia_N2O
+            
+        arrModuloRural(jModuloRural).EE1_Calagem_CO2_DET = _
+            arrModuloRural(jModuloRural).EE1_Calagem_CO2(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_Calagem_CO2
+            
+        arrModuloRural(jModuloRural).EE1_AdubacaoOrganica_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_AdubacaoOrganica_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_AdubacaoOrganica_N2O
+        
+        arrModuloRural(jModuloRural).EE1_AdubacaoOrganica_CH4_DET = _
+            arrModuloRural(jModuloRural).EE1_AdubacaoOrganica_CH4(Empty, False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_AdubacaoOrganica_CH4(inventarioEmissoes.estado)
+            
+        arrModuloRural(jModuloRural).EE1_AdubacaoVerde_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_AdubacaoVerde_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_AdubacaoVerde_N2O
+            
+        arrModuloRural(jModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O
+            
+        arrModuloRural(jModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O
+            
+        arrModuloRural(jModuloRural).EE1_DeposicaoAtmosferica_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_DeposicaoAtmosferica_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_DeposicaoAtmosferica_N2O
+            
+        arrModuloRural(jModuloRural).EE1_DecomposicaoResiduosVegetais_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_DecomposicaoResiduosVegetais_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_DecomposicaoResiduosVegetais_N2O
+            
+        arrModuloRural(jModuloRural).EE1_QueimaResiduosVegetais_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_QueimaResiduosVegetais_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_QueimaResiduosVegetais_N2O
+            
+        arrModuloRural(jModuloRural).EE1_QueimaResiduosVegetais_CH4_DET = _
+            arrModuloRural(jModuloRural).EE1_QueimaResiduosVegetais_CH4(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_QueimaResiduosVegetais_CH4
+            
+        arrModuloRural(jModuloRural).EE1_ManejoSoloOrganico_CO2_DET = _
+            arrModuloRural(jModuloRural).EE1_ManejoSoloOrganico_CO2(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_ManejoSoloOrganico_CO2
+            
+        arrModuloRural(jModuloRural).EE1_ManejoSoloOrganico_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_ManejoSoloOrganico_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_ManejoSoloOrganico_N2O
+            
+        arrModuloRural(jModuloRural).EE1_SistemaManejoDejetos_N2O_DET = _
+            arrModuloRural(jModuloRural).EE1_SistemaManejoDejetos_N2O(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_SistemaManejoDejetos_N2O
+        
+        arrModuloRural(jModuloRural).EE1_SistemaManejoDejetos_CH4_DET = _
+            arrModuloRural(jModuloRural).EE1_SistemaManejoDejetos_CH4(Empty, False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_SistemaManejoDejetos_CH4(inventarioEmissoes.estado)
+            
+        arrModuloRural(jModuloRural).EE1_FermentacaoEnterica_CH4_DET = _
+            arrModuloRural(jModuloRural).EE1_FermentacaoEnterica_CH4(Empty, False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_FermentacaoEnterica_CH4(inventarioEmissoes.estado)
+            
+        arrModuloRural(jModuloRural).EE1_SupressaoVegetacaoNativa_CO2_DET = _
+            arrModuloRural(jModuloRural).EE1_SupressaoVegetacaoNativa_CO2(inventarioEmissoes.bioma, _
+                inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado, False) + _
+            arrModuloRuralEfetivo(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(inventarioEmissoes.bioma, _
+                inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado)
+            
+        arrModuloRural(jModuloRural).RBIOG_AdubacaoVerde_CO2_DET = _
+            arrModuloRural(jModuloRural).RBIOG_AdubacaoVerde_CO2(False) + _
+            arrModuloRuralEfetivo(iModuloRural).RBIOG_AdubacaoVerde_CO2
+            
+        arrModuloRural(jModuloRural).EUS_MudancaUsoSolo_CO2_DET = _
+            arrModuloRural(jModuloRural).EUS_MudancaUsoSolo_CO2(inventarioEmissoes.estado, inventarioEmissoes.bioma, _
+                arrModuloRural(jModuloRural).musTempoTransicao, False) + _
+            arrModuloRuralEfetivo(iModuloRural).EUS_MudancaUsoSolo_CO2(inventarioEmissoes.estado, inventarioEmissoes.bioma, _
+                arrModuloRuralEfetivo(iModuloRural).musTempoTransicao)
+                
+        arrModuloRural(jModuloRural).EUS_Madeira_CO2_DET = _
+            arrModuloRural(jModuloRural).EUS_Madeira_CO2(False) + _
+            arrModuloRuralEfetivo(iModuloRural).EUS_Madeira_CO2
+            
+        arrModuloRural(jModuloRural).E_AreaPreservacao_CO2_DET = _
+            arrModuloRural(jModuloRural).E_AreaPreservacao_CO2(inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, _
+                inventarioEmissoes.estado, False) + _
+            arrModuloRuralEfetivo(iModuloRural).E_AreaPreservacao_CO2(inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, _
+                inventarioEmissoes.estado)
+    Next iModuloRural
+    
+    Rem Produtividade média ponderada
+    For jModuloRural = 0 To UBound(arrModuloRural)
+        Select Case arrModuloRural(jModuloRural).mModulo
+            Rem Agrícola
+            Case modulos.algodao, modulos.arroz, modulos.cana, modulos.feijao, _
+                modulos.milho, modulos.pastagem, modulos.soja, modulos.trigo
+                For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+                    If (arrModuloRural(jModuloRural).mModulo = arrModuloRuralEfetivo(iModuloRural).mModulo) Then
+                        
+                        arrModuloRural(jModuloRural).maAreaAgricola = _
+                            arrModuloRural(jModuloRural).maAreaAgricola + _
+                            arrModuloRuralEfetivo(iModuloRural).maAreaAgricola
+                        
+                        arrModuloRural(jModuloRural).maProdutividadeAgricola = _
+                            arrModuloRural(jModuloRural).maProdutividadeAgricola + _
+                            arrModuloRuralEfetivo(iModuloRural).maProdutividadeAgricola * _
+                            arrModuloRuralEfetivo(iModuloRural).maAreaAgricola
+                    End If
+                Next iModuloRural
+                
+                arrModuloRural(jModuloRural).maProdutividadeAgricola = _
+                    arrModuloRural(jModuloRural).maProdutividadeAgricola / _
+                    arrModuloRural(jModuloRural).maAreaAgricola
+                    
+            Rem Pecuária
+            Case pecuaria
+                For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+                    If (arrModuloRuralEfetivo(iModuloRural).mModulo = pecuaria) Then
+                        arrModuloRural(jModuloRural).rPesoAnimal = _
+                            arrModuloRural(jModuloRural).rPesoAnimal + _
+                            arrModuloRuralEfetivo(iModuloRural).rPesoAnimal * _
+                            arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                        
+                        Select Case arrModuloRuralEfetivo(iModuloRural).rAnimal
+                            Case "Bovino de corte", "Bovino reprodutor", "Suíno reprodutor de subsistência", _
+                                "Suíno em aleitamento industrial", "Suíno em aleitamento de subsistência", _
+                                "Suíno em terminação industrial", "Suíno em terminação de subsistência", "Pinto/frango(a)"
+                                    rebanhoCarne = rebanhoCarne + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoCarne = _
+                                        arrModuloRural(jModuloRural).rRendimentoCarne + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoCarne * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+        
+                            Case "Bovino leiteiro"
+                                    rebanhoLeite = rebanhoLeite + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoLeite = _
+                                        arrModuloRural(jModuloRural).rRendimentoLeite + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoLeite * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                        
+                            Case "Caprino", "Ovino"
+                                If (arrModuloRuralEfetivo(iModuloRural).rSexoAnimal = "Fêmea") Then
+                                    rebanhoLeite = rebanhoLeite + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoLeite = _
+                                        arrModuloRural(jModuloRural).rRendimentoLeite + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoLeite * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                        
+                                ElseIf (arrModuloRuralEfetivo(iModuloRural).rSexoAnimal = "Macho") Then
+                                    rebanhoCarne = rebanhoCarne + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoCarne = _
+                                        arrModuloRural(jModuloRural).rRendimentoCarne + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoCarne * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                End If
+                                
+                            Case "Equino"
+                                rebanhoEquino = rebanhoEquino + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                
+                            Case "Galinha/galo"
+                                If (arrModuloRuralEfetivo(iModuloRural).rSexoAnimal = "Fêmea") Then
+                                    rebanhoOvos = rebanhoOvos + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoOvos = _
+                                        arrModuloRural(jModuloRural).rRendimentoOvos + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoOvos * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                        
+                                ElseIf (arrModuloRuralEfetivo(iModuloRural).rSexoAnimal = "Macho") Then
+                                    rebanhoCarne = rebanhoCarne + arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                    arrModuloRural(jModuloRural).rRendimentoCarne = _
+                                        arrModuloRural(jModuloRural).rRendimentoCarne + _
+                                        arrModuloRuralEfetivo(iModuloRural).rRendimentoCarne * _
+                                        arrModuloRuralEfetivo(iModuloRural).rNumeroAnimais
+                                End If
+                        End Select
+                    End If
+                Next iModuloRural
+                
+                If (rebanhoCarne > 0) Then _
+                    arrModuloRural(jModuloRural).rRendimentoCarne = _
+                        arrModuloRural(jModuloRural).rRendimentoCarne
+                
+                If (rebanhoLeite > 0) Then _
+                    arrModuloRural(jModuloRural).rRendimentoLeite = _
+                        arrModuloRural(jModuloRural).rRendimentoLeite
+                    
+                If (rebanhoOvos > 0) Then _
+                    arrModuloRural(jModuloRural).rRendimentoOvos = _
+                        arrModuloRural(jModuloRural).rRendimentoOvos
+                
+                arrModuloRural(jModuloRural).rNumeroAnimais = rebanhoCarne + rebanhoLeite + rebanhoOvos + rebanhoEquino
+                arrModuloRural(jModuloRural).rPesoAnimal = arrModuloRural(jModuloRural).rPesoAnimal / _
+                    arrModuloRural(jModuloRural).rNumeroAnimais
+            
+            Rem Florestal
+            Case modulos.eucalipto, modulos.parica, modulos.pinus, modulos.seringueira, modulos.teca
+                For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+                    If (arrModuloRural(jModuloRural).mModulo = _
+                        arrModuloRuralEfetivo(iModuloRural).mModulo) Then
+                        
+                        arrModuloRural(jModuloRural).mfAreaFloresta = _
+                            arrModuloRural(jModuloRural).mfAreaFloresta + _
+                            arrModuloRuralEfetivo(iModuloRural).mfAreaFloresta
+                        
+                        arrModuloRural(jModuloRural).mfNumeroArvores = _
+                            arrModuloRural(jModuloRural).mfNumeroArvores + _
+                            arrModuloRuralEfetivo(iModuloRural).mfNumeroArvores ' * _
+                            'arrModuloRuralEfetivo(iModuloRural).mfAreaFloresta
+                        
+                        arrModuloRural(jModuloRural).mfProdutividadeFlorestalVolume_DET = _
+                            arrModuloRural(jModuloRural).mfProdutividadeFlorestalVolume(False) + _
+                            arrModuloRuralEfetivo(iModuloRural).mfProdutividadeFlorestalVolume(True) ' * _
+                            'arrModuloRuralEfetivo(iModuloRural).mfAreaFloresta
+                            
+                        arrModuloRural(jModuloRural).mfProdutividadeFlorestalMassa_DET = _
+                            arrModuloRural(jModuloRural).mfProdutividadeFlorestalMassa(False) + _
+                            arrModuloRuralEfetivo(iModuloRural).mfProdutividadeFlorestalMassa(True) ' * _
+                            'arrModuloRuralEfetivo(iModuloRural).mfAreaFloresta
+                    End If
+                Next iModuloRural
+                
+                'arrModuloRural(jModuloRural).mfProdutividadeFlorestalVolume_DET = _
+                    'arrModuloRural(jModuloRural).mfProdutividadeFlorestalVolume(False) / _
+                    'arrModuloRural(jModuloRural).mfAreaFloresta
+                    
+                'arrModuloRural(jModuloRural).mfProdutividadeFlorestalMassa_DET = _
+                    'arrModuloRural(jModuloRural).mfProdutividadeFlorestalMassa(False) / _
+                    'arrModuloRural(jModuloRural).mfAreaFloresta
+            
+            Rem Áreas de preservação
+            Case modulos.protecaoPermanente
+                For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+                    If (arrModuloRural(jModuloRural).mModulo = _
+                        arrModuloRuralEfetivo(iModuloRural).mModulo) Then
+                        arrModuloRural(jModuloRural).pAreaPreservacao = arrModuloRural(jModuloRural).pAreaPreservacao + _
+                            arrModuloRuralEfetivo(iModuloRural).pAreaPreservacao
+                    End If
+                Next iModuloRural
+                
+            Case modulos.reservaLegal
+                For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+                    If (arrModuloRural(jModuloRural).mModulo = _
+                        arrModuloRuralEfetivo(iModuloRural).mModulo) Then
+                        arrModuloRural(jModuloRural).pAreaPreservacao = arrModuloRural(jModuloRural).pAreaPreservacao + _
+                            arrModuloRuralEfetivo(iModuloRural).pAreaPreservacao
+                    End If
+                Next iModuloRural
+        End Select
+    Next jModuloRural
+    
+    Call limparBindEmissoes
+    Call bindEmissoes(inventarioEmissoes, arrModuloRural, arrModuloRuralEfetivo)
+    Call formatarBindEmissoes
+    
+    GoTo fim
+erro:
+    erro = True
+    Call limparBindEmissoes(True)
+    MsgBox Err.Description, vbOKOnly + vbCritical + vbDefaultButton1, "Calcular emissões"
+
+fim:
+    Application.EnableEvents = True
+    Application.EnableAnimations = True
+    Application.ScreenUpdating = True
+    
+    If (erro = False) Then
+        pSintese.Outline.ShowLevels (1)
+        Call abaSintese
+        Application.GoTo pSintese.Range("A1")
+    End If
+    
+    If (controlarProtecao() = True) Then Call pSintese.Protect(AllowFormattingRows:=True)
+    
+End Sub
+
+Private Sub bindEmissoes(inventarioEmissoes As cPropriedade, arrModuloRural() As cModAgropecuario, arrModuloRuralEfetivo() As cModAgropecuario)
+    Dim referencia As String, iModuloAgricola As Integer, iModuloFlorestal As Integer, iModuloPreservacao As Integer, iModuloRural As Integer, jModuloRural As Integer
+    Dim graf As ChartObject, yMaximo As Double, arrValores() As Variant, arrLegendas() As String, sr As Series, posicaoGrafico As Integer
+    
+    Dim areaAgricola As Double, producaoAgricola As Double, numeroAnimais As Double, _
+        pesoVivo As Double, producaoCarcaca As Double, producaoLeite As Double, producaoOvos As Double, _
+        areaFloresta As Double, producaoMadeiraNumeroArvores As Double, producaoMadeiraMassa As Double, producaoMadeiraVolume As Double, _
+        areaProtecaoPermanente As Double, areaReservaLegal As Double, estoqueProtecaoPermanente As Double, estoqueReservaLegal As Double
+    
+    Rem Emissões por escopo
+    Rem Propriedade
+    referencia = "emissoes_escopo"
+    pSintese.Range(referencia).Offset(4, 2).Value2 = inventarioEmissoes.EE1_CO2
+    pSintese.Range(referencia).Offset(4, 3).Value2 = inventarioEmissoes.EE1_N2O
+    pSintese.Range(referencia).Offset(4, 4).Value2 = inventarioEmissoes.EE1_CH4
+    
+    pSintese.Range(referencia).Offset(4, 5).Value2 = inventarioEmissoes.EE1_CO2
+    pSintese.Range(referencia).Offset(4, 6).Value2 = conversao_N2O_CO2eq(inventarioEmissoes.EE1_N2O)
+    pSintese.Range(referencia).Offset(4, 7).Value2 = conversao_CH4_CO2eq(inventarioEmissoes.EE1_CH4)
+    pSintese.Range(referencia).Offset(4, 8).Value2 = inventarioEmissoes.EE1_CO2 + _
+        conversao_N2O_CO2eq(inventarioEmissoes.EE1_N2O) + conversao_CH4_CO2eq(inventarioEmissoes.EE1_CH4)
+        
+    pSintese.Range(referencia).Offset(5, 2).Value2 = inventarioEmissoes.EE2_CO2
+    pSintese.Range(referencia).Offset(5, 5).Value2 = inventarioEmissoes.EE2_CO2
+    pSintese.Range(referencia).Offset(5, 8).Value2 = inventarioEmissoes.EE2_CO2
+    
+    pSintese.Range(referencia).Offset(6, 2).Value2 = inventarioEmissoes.EE3_CO2
+    pSintese.Range(referencia).Offset(6, 3).Value2 = inventarioEmissoes.EE3_N2O
+    pSintese.Range(referencia).Offset(6, 4).Value2 = inventarioEmissoes.EE3_CH4
+    pSintese.Range(referencia).Offset(6, 5).Value2 = inventarioEmissoes.EE3_CO2
+    pSintese.Range(referencia).Offset(6, 6).Value2 = conversao_N2O_CO2eq(inventarioEmissoes.EE3_N2O)
+    pSintese.Range(referencia).Offset(6, 7).Value2 = conversao_CH4_CO2eq(inventarioEmissoes.EE3_CH4)
+    pSintese.Range(referencia).Offset(6, 8).Value2 = inventarioEmissoes.EE3_CO2 + _
+        conversao_N2O_CO2eq(inventarioEmissoes.EE3_N2O) + conversao_CH4_CO2eq(inventarioEmissoes.EE3_CH4)
+    
+    Rem Emissões por processos biogênicos
+    referencia = "emissoes_biogenicas"
+    pSintese.Range(referencia).Offset(2, 4).Value2 = inventarioEmissoes.EBIOG_CO2
+    
+    Rem Módulos rurais
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then _
+            areaAgricola = areaAgricola + arrModuloRural(iModuloRural).maAreaAgricola
+        
+        If (arrModuloRural(iModuloRural).maAreaAgricola > 0 And arrModuloRural(iModuloRural).maProdutividadeAgricola > 0) Then _
+            producaoAgricola = producaoAgricola + (arrModuloRural(iModuloRural).maAreaAgricola * arrModuloRural(iModuloRural).maProdutividadeAgricola)
+            
+        If (arrModuloRural(iModuloRural).mfAreaFloresta > 0) Then _
+            areaFloresta = areaFloresta + arrModuloRural(iModuloRural).mfAreaFloresta
+        
+        If (arrModuloRural(iModuloRural).mfAreaFloresta > 0 And arrModuloRural(iModuloRural).mfNumeroArvores > 0) Then
+            'producaoMadeiraNumeroArvores = producaoMadeiraNumeroArvores + (arrModuloRural(iModuloRural).mfAreaFloresta * arrModuloRural(iModuloRural).mfNumeroArvores)
+            producaoMadeiraNumeroArvores = producaoMadeiraNumeroArvores + arrModuloRural(iModuloRural).mfNumeroArvores
+        End If
+        
+        If (arrModuloRural(iModuloRural).mfAreaFloresta > 0 And arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False) > 0) Then
+            'producaoMadeiraVolume = producaoMadeiraVolume + (arrModuloRural(iModuloRural).mfAreaFloresta * arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False))
+            producaoMadeiraVolume = producaoMadeiraVolume + arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False)
+        End If
+            
+        If (arrModuloRural(iModuloRural).mfAreaFloresta > 0 And arrModuloRural(iModuloRural).mfProdutividadeFlorestalMassa(False) > 0) Then
+            'producaoMadeiraMassa = producaoMadeiraMassa + (arrModuloRural(iModuloRural).mfAreaFloresta * arrModuloRural(iModuloRural).mfProdutividadeFlorestalMassa(False))
+            producaoMadeiraMassa = producaoMadeiraMassa + arrModuloRural(iModuloRural).mfProdutividadeFlorestalMassa(False)
+        End If
+        
+        If (arrModuloRural(iModuloRural).rNumeroAnimais > 0) Then _
+            numeroAnimais = numeroAnimais + arrModuloRural(iModuloRural).rNumeroAnimais
+        
+        If (arrModuloRural(iModuloRural).rPesoAnimal > 0) Then _
+            pesoVivo = pesoVivo + arrModuloRural(iModuloRural).rPesoAnimal * arrModuloRural(iModuloRural).rNumeroAnimais
+        
+        If (arrModuloRural(iModuloRural).rRendimentoCarne > 0) Then _
+            producaoCarcaca = producaoCarcaca + arrModuloRural(iModuloRural).rRendimentoCarne
+        
+        If (arrModuloRural(iModuloRural).rRendimentoLeite > 0) Then _
+            producaoLeite = producaoLeite + arrModuloRural(iModuloRural).rRendimentoLeite
+            
+        If (arrModuloRural(iModuloRural).rRendimentoOvos > 0) Then _
+            producaoOvos = producaoOvos + arrModuloRural(iModuloRural).rRendimentoOvos
+        
+        If (arrModuloRural(iModuloRural).mModulo = protecaoPermanente) Then
+            areaProtecaoPermanente = areaProtecaoPermanente + arrModuloRural(iModuloRural).pAreaPreservacao
+            estoqueProtecaoPermanente = estoqueProtecaoPermanente + arrModuloRural(iModuloRural).E_AreaPreservacao_CO2( _
+                inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado, False)
+        End If
+        
+        If (arrModuloRural(iModuloRural).mModulo = reservaLegal) Then
+            areaReservaLegal = areaReservaLegal + arrModuloRural(iModuloRural).pAreaPreservacao
+            estoqueReservaLegal = estoqueReservaLegal + arrModuloRural(iModuloRural).E_AreaPreservacao_CO2( _
+                inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado, False)
+        End If
+        
+        Rem Emissões por escopo
+        referencia = "emissoes_escopo"
+        pSintese.Range(referencia).Offset(4, 2).Value2 = _
+            pSintese.Range(referencia).Offset(4, 2).Value2 + _
+            arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False)
+        
+        pSintese.Range(referencia).Offset(4, 3).Value2 = _
+            pSintese.Range(referencia).Offset(4, 3).Value2 + _
+            arrModuloRural(iModuloRural).EE1_N2O(False)
+        
+        pSintese.Range(referencia).Offset(4, 4).Value2 = _
+            pSintese.Range(referencia).Offset(4, 4).Value2 + _
+            arrModuloRural(iModuloRural).EE1_CH4(Empty, False)
+        
+        pSintese.Range(referencia).Offset(4, 5).Value2 = _
+            pSintese.Range(referencia).Offset(4, 5).Value2 + _
+            arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False)
+        
+        pSintese.Range(referencia).Offset(4, 6).Value2 = _
+            pSintese.Range(referencia).Offset(4, 6).Value2 + _
+            conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False))
+            
+        pSintese.Range(referencia).Offset(4, 7).Value2 = _
+            pSintese.Range(referencia).Offset(4, 7).Value2 + _
+            conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+        
+        Rem Mudança de uso do solo
+        referencia = "emissoes_usosolo"
+        pSintese.Range(referencia).Offset(2, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 + _
+            arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False)
+        
+        Rem Processos biogênicos
+        referencia = "emissoes_biogenicas"
+        pSintese.Range(referencia).Offset(4, 4).Value2 = _
+            pSintese.Range(referencia).Offset(4, 4).Value2 + _
+            arrModuloRural(iModuloRural).RBIOG_CO2(False)
+    Next iModuloRural
+    
+    Rem Emissões totais
+    referencia = "emissoes_escopo"
+    pSintese.Range(referencia).Offset(4, 8).Value2 = _
+        pSintese.Range(referencia).Offset(4, 5).Value2 + _
+        pSintese.Range(referencia).Offset(4, 6).Value2 + _
+        pSintese.Range(referencia).Offset(4, 7).Value2
+    
+    pSintese.Range(referencia).Offset(5, 8).Value2 = _
+        pSintese.Range(referencia).Offset(5, 5).Value2
+    
+    pSintese.Range(referencia).Offset(6, 8).Value2 = _
+        pSintese.Range(referencia).Offset(6, 5).Value2 + _
+        pSintese.Range(referencia).Offset(6, 6).Value2 + _
+        pSintese.Range(referencia).Offset(6, 7).Value2
+    
+    Rem Indicadores de eficiência
+    referencia = "emissoes_indicadores"
+    pSintese.Range(referencia).Offset(2, 4).Value2 = _
+        pSintese.Range("emissoes_escopo").Offset(4, 8).Value2 + _
+        pSintese.Range("emissoes_escopo").Offset(5, 8).Value2 + _
+        pSintese.Range("emissoes_usosolo").Offset(2, 4).Value2 + _
+        pSintese.Range("emissoes_biogenicas").Offset(2, 4).Value2 - _
+        pSintese.Range("emissoes_biogenicas").Offset(4, 4).Value2
+        
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        Select Case arrModuloRural(iModuloRural).mModulo
+            
+            Case algodao, arroz, cana, feijao, milho, soja, trigo, pastagem
+                pSintese.Range(referencia).Offset(4, 4).Value2 = pSintese.Range(referencia).Offset(4, 4).Value2 + _
+                    arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False)) + _
+                    arrModuloRural(iModuloRural).RBIOG_CO2(False) * -1 + _
+                    arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+                    
+            Case pecuaria
+                pSintese.Range(referencia).Offset(6, 4).Value2 = pSintese.Range(referencia).Offset(6, 4).Value2 + _
+                    arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+                    
+            Case eucalipto, parica, pinus, seringueira, teca
+                pSintese.Range(referencia).Offset(8, 4).Value2 = pSintese.Range(referencia).Offset(8, 4).Value2 + _
+                    arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False)) + _
+                    arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False)
+        End Select
+    Next iModuloRural
+    
+    If (producaoAgricola = 0#) Then
+        pSintese.Range(referencia).Offset(11, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(11, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(11, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoAgricola
+        pSintese.Range(referencia).Offset(11, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoToneladaKilo(producaoAgricola)
+    End If
+    
+    If (producaoMadeiraNumeroArvores = 0#) Then
+        pSintese.Range(referencia).Offset(13, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(13, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(13, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoMadeiraVolume
+            
+        pSintese.Range(referencia).Offset(13, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoMadeiraNumeroArvores
+    End If
+
+    
+    If (numeroAnimais = 0#) Then
+        pSintese.Range(referencia).Offset(15, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(15, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(15, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoUnidadeMilhar(numeroAnimais)
+        pSintese.Range(referencia).Offset(15, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / numeroAnimais
+    End If
+    
+    If (pesoVivo = 0#) Then
+        pSintese.Range(referencia).Offset(17, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(17, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(17, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoKiloTonelada(pesoVivo)
+        pSintese.Range(referencia).Offset(17, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / pesoVivo
+    End If
+    
+    If (producaoCarcaca = 0#) Then
+        pSintese.Range(referencia).Offset(19, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(19, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(19, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoKiloTonelada(producaoCarcaca)
+        pSintese.Range(referencia).Offset(19, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoCarcaca
+    End If
+    
+    If (producaoLeite = 0#) Then
+        pSintese.Range(referencia).Offset(21, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(21, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(21, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoLitroMetroCubico(producaoLeite)
+        pSintese.Range(referencia).Offset(21, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoLeite
+    End If
+    
+    If (producaoOvos = 0#) Then
+        pSintese.Range(referencia).Offset(23, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(23, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(23, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / conversaoUnidadeMilhar(producaoOvos)
+        pSintese.Range(referencia).Offset(23, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / producaoOvos
+    End If
+    
+    pSintese.Range(referencia).Offset(26, 4).Value2 = _
+        pSintese.Range(referencia).Offset(2, 4).Value2 / inventarioEmissoes.AreaTotal
+    
+    If (areaProtecaoPermanente = 0# Or estoqueProtecaoPermanente = 0#) Then
+        pSintese.Range(referencia).Offset(28, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(28, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(28, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / areaProtecaoPermanente
+        pSintese.Range(referencia).Offset(28, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / estoqueProtecaoPermanente
+    End If
+    
+    If (areaReservaLegal = 0# Or estoqueReservaLegal = 0#) Then
+        pSintese.Range(referencia).Offset(30, 2).Value2 = 0
+        pSintese.Range(referencia).Offset(30, 4).Value2 = 0
+    Else
+        pSintese.Range(referencia).Offset(30, 2).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / areaReservaLegal
+        pSintese.Range(referencia).Offset(30, 4).Value2 = _
+            pSintese.Range(referencia).Offset(2, 4).Value2 / estoqueReservaLegal
+    End If
+    
+    Rem Emissões detalhadas
+    Rem Propriedade
+    referencia = "emissoes_detalhe_geral"
+    pSintese.Range(referencia).Offset(4, 2).Value2 = _
+        inventarioEmissoes.EE1_CO2 + conversao_N2O_CO2eq(inventarioEmissoes.EE1_N2O) + conversao_CH4_CO2eq(inventarioEmissoes.EE1_CH4)
+    pSintese.Range(referencia).Offset(5, 2).Value2 = inventarioEmissoes.EE2_CO2
+    pSintese.Range(referencia).Offset(6, 2).Value2 = inventarioEmissoes.EE3_CO2 + _
+        conversao_N2O_CO2eq(inventarioEmissoes.EE3_N2O) + conversao_CH4_CO2eq(inventarioEmissoes.EE3_CH4)
+    
+    pSintese.Range(referencia).Offset(10, 2).Value2 = inventarioEmissoes.EBIOG_CO2
+    
+    pSintese.Range(referencia).Offset(15, 4).Value2 = inventarioEmissoes.EE1_CombustivelInterno_CO2
+    pSintese.Range(referencia).Offset(15, 5).Value2 = inventarioEmissoes.EE1_CombustivelInterno_N2O
+    pSintese.Range(referencia).Offset(15, 6).Value2 = inventarioEmissoes.EE1_CombustivelInterno_CH4
+    pSintese.Range(referencia).Offset(15, 7).Value2 = inventarioEmissoes.EE1_CombustivelInterno_CO2 + _
+        conversao_N2O_CO2eq(inventarioEmissoes.EE1_CombustivelInterno_N2O) + _
+        conversao_CH4_CO2eq(inventarioEmissoes.EE1_CombustivelInterno_CH4)
+        
+    pSintese.Range(referencia).Offset(20, 4).Value2 = inventarioEmissoes.EE2_CompraEnergiaEletrica_CO2
+    pSintese.Range(referencia).Offset(25, 4).Value2 = inventarioEmissoes.EE3_CombustivelTransporteProducao_CO2
+    pSintese.Range(referencia).Offset(25, 5).Value2 = inventarioEmissoes.EE3_CombustivelTransporteProducao_N2O
+    pSintese.Range(referencia).Offset(25, 6).Value2 = inventarioEmissoes.EE3_CombustivelTransporteProducao_CH4
+    pSintese.Range(referencia).Offset(25, 7).Value2 = inventarioEmissoes.EE3_CombustivelTransporteProducao_CO2 + _
+        conversao_N2O_CO2eq(inventarioEmissoes.EE3_CombustivelTransporteProducao_N2O) + _
+        conversao_CH4_CO2eq(inventarioEmissoes.EE3_CombustivelTransporteProducao_CH4)
+    
+    pSintese.Range(referencia).Offset(30, 4).Value2 = inventarioEmissoes.EBIOG_CombustivelInterno_CO2
+    
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        Select Case arrModuloRural(iModuloRural).mModulo
+            Case algodao
+                referencia = "emissoes_detalhe_algodao"
+            
+            Case arroz
+                referencia = "emissoes_detalhe_arroz"
+            
+            Case cana
+                referencia = "emissoes_detalhe_cana"
+            
+            Case feijao
+                referencia = "emissoes_detalhe_feijao"
+            
+            Case milho
+                referencia = "emissoes_detalhe_milho"
+                
+            Case pastagem
+                referencia = "emissoes_detalhe_pastagem"
+                
+            Case pecuaria
+                referencia = "emissoes_detalhe_pecuaria"
+                
+            Case soja
+                referencia = "emissoes_detalhe_soja"
+                
+            Case trigo
+                referencia = "emissoes_detalhe_trigo"
+            
+            Case eucalipto
+                referencia = "emissoes_detalhe_eucalipto"
+            
+            Case parica
+                referencia = "emissoes_detalhe_parica"
+            
+            Case pinus
+                referencia = "emissoes_detalhe_pinus"
+            
+            Case seringueira
+                referencia = "emissoes_detalhe_seringueira"
+            
+            Case teca
+                referencia = "emissoes_detalhe_teca"
+            
+        End Select
+        
+        Select Case arrModuloRural(iModuloRural).mModulo
+            Case algodao, arroz, cana, feijao, milho, soja, trigo
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+                            
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                                
+                Else
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0 And arrModuloRural(iModuloRural).maProdutividadeAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(4, 4).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        (arrModuloRural(iModuloRural).maAreaAgricola * arrModuloRural(iModuloRural).maProdutividadeAgricola)
+                                
+                Else
+                    pSintese.Range(referencia).Offset(4, 4).Value2 = 0
+                End If
+                
+                Rem Resumo - Remoções biogênicas
+                pSintese.Range(referencia).Offset(8, 2).Value2 = arrModuloRural(iModuloRural).RBIOG_CO2(False)
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = arrModuloRural(iModuloRural).RBIOG_CO2(False) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                                
+                Else
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0 And arrModuloRural(iModuloRural).maProdutividadeAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(8, 4).Value2 = arrModuloRural(iModuloRural).RBIOG_CO2(False) / _
+                        (arrModuloRural(iModuloRural).maAreaAgricola * arrModuloRural(iModuloRural).maProdutividadeAgricola)
+                                                
+                Else
+                    pSintese.Range(referencia).Offset(8, 4).Value2 = 0
+                End If
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(12, 2).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(12, 3).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                                
+                Else
+                    pSintese.Range(referencia).Offset(12, 3).Value2 = 0
+                    
+                End If
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0 And arrModuloRural(iModuloRural).maProdutividadeAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(12, 4).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False) / _
+                        (arrModuloRural(iModuloRural).maAreaAgricola * arrModuloRural(iModuloRural).maProdutividadeAgricola)
+                
+                Else
+                    pSintese.Range(referencia).Offset(12, 4).Value2 = 0
+                End If
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(17, 4).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                pSintese.Range(referencia).Offset(17, 7).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                
+                pSintese.Range(referencia).Offset(18, 4).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False)
+                pSintese.Range(referencia).Offset(18, 5).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_N2O(False)
+                pSintese.Range(referencia).Offset(18, 7).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_Ureia_N2O(False))
+                
+                pSintese.Range(referencia).Offset(19, 5).Value2 = arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False)
+                pSintese.Range(referencia).Offset(19, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False))
+            
+                If (arrModuloRural(iModuloRural).mModulo = arroz) Then
+                    pSintese.Range(referencia).Offset(20, 6).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_CH4(False)
+                    pSintese.Range(referencia).Offset(20, 7).Value2 = conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_CH4(False))
+                
+                Else
+                    pSintese.Range(referencia).Offset(20, 5).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False)
+                    pSintese.Range(referencia).Offset(20, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False))
+                End If
+                
+                pSintese.Range(referencia).Offset(21, 5).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoVerde_N2O(False)
+                pSintese.Range(referencia).Offset(21, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoVerde_N2O(False))
+                
+                pSintese.Range(referencia).Offset(22, 5).Value2 = arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False)
+                pSintese.Range(referencia).Offset(22, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False))
+                
+                pSintese.Range(referencia).Offset(23, 5).Value2 = arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False)
+                pSintese.Range(referencia).Offset(23, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False))
+                
+                pSintese.Range(referencia).Offset(24, 5).Value2 = arrModuloRural(iModuloRural).EE1_DecomposicaoResiduosVegetais_N2O(False)
+                pSintese.Range(referencia).Offset(24, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_DecomposicaoResiduosVegetais_N2O(False))
+                
+                pSintese.Range(referencia).Offset(25, 5).Value2 = arrModuloRural(iModuloRural).EE1_QueimaResiduosVegetais_N2O(False)
+                pSintese.Range(referencia).Offset(25, 6).Value2 = arrModuloRural(iModuloRural).EE1_QueimaResiduosVegetais_CH4(False)
+                pSintese.Range(referencia).Offset(25, 7).Value2 = _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_QueimaResiduosVegetais_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_QueimaResiduosVegetais_CH4(False))
+                
+                pSintese.Range(referencia).Offset(26, 4).Value2 = arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_CO2(False)
+                pSintese.Range(referencia).Offset(26, 5).Value2 = arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_N2O(False)
+                pSintese.Range(referencia).Offset(26, 7).Value2 = _
+                    arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_CO2(False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_N2O(False))
+            
+                pSintese.Range(referencia).Offset(27, 4).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+                pSintese.Range(referencia).Offset(27, 7).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+            
+                Rem Específicas - Processos biogênicos
+                pSintese.Range(referencia).Offset(32, 4).Value2 = arrModuloRural(iModuloRural).RBIOG_AdubacaoVerde_CO2(False)
+                
+                Rem Específicas - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(37, 4).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+                
+            Case pastagem
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+                
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                
+                Else
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = 0
+                End If
+                
+                Rem Resumo - Remoções biogênicas
+                pSintese.Range(referencia).Offset(8, 2).Value2 = arrModuloRural(iModuloRural).RBIOG_CO2(False)
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = arrModuloRural(iModuloRural).RBIOG_CO2(False) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                
+                Else
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = 0
+                
+                End If
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(12, 2).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+                If (arrModuloRural(iModuloRural).maAreaAgricola > 0) Then
+                    pSintese.Range(referencia).Offset(12, 3).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False) / _
+                        arrModuloRural(iModuloRural).maAreaAgricola
+                
+                Else
+                    pSintese.Range(referencia).Offset(12, 3).Value2 = 0
+                End If
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(17, 4).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                pSintese.Range(referencia).Offset(17, 7).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                
+                pSintese.Range(referencia).Offset(18, 4).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False)
+                pSintese.Range(referencia).Offset(18, 5).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_N2O(False)
+                pSintese.Range(referencia).Offset(18, 7).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_Ureia_N2O(False))
+                
+                pSintese.Range(referencia).Offset(19, 5).Value2 = arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False)
+                pSintese.Range(referencia).Offset(19, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False))
+                
+                pSintese.Range(referencia).Offset(20, 5).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False)
+                pSintese.Range(referencia).Offset(20, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False))
+                
+                pSintese.Range(referencia).Offset(21, 5).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoVerde_N2O(False)
+                pSintese.Range(referencia).Offset(21, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoVerde_N2O(False))
+                
+                pSintese.Range(referencia).Offset(22, 5).Value2 = arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False)
+                pSintese.Range(referencia).Offset(22, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False))
+                
+                pSintese.Range(referencia).Offset(23, 5).Value2 = arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False)
+                pSintese.Range(referencia).Offset(23, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False))
+                
+                pSintese.Range(referencia).Offset(24, 4).Value2 = arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_CO2(False)
+                pSintese.Range(referencia).Offset(24, 5).Value2 = arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_N2O(False)
+                pSintese.Range(referencia).Offset(24, 7).Value2 = arrModuloRural(iModuloRural).EE1_ManejoSoloOrganico_CO2(False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_DecomposicaoResiduosVegetais_N2O(False))
+            
+                pSintese.Range(referencia).Offset(25, 4).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+                pSintese.Range(referencia).Offset(25, 7).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+                
+                Rem Específicas - Processos biogênicos
+                pSintese.Range(referencia).Offset(30, 4).Value2 = arrModuloRural(iModuloRural).RBIOG_AdubacaoVerde_CO2(False)
+                
+                Rem Específicas - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(35, 4).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+            
+            Case pecuaria
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+                
+                If (arrModuloRural(iModuloRural).rNumeroAnimais) Then
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = _
+                        pSintese.Range(referencia).Offset(4, 2).Value2 / _
+                        conversaoUnidadeMilhar(arrModuloRural(iModuloRural).rNumeroAnimais)
+                    pSintese.Range(referencia).Offset(4, 4).Value2 = _
+                        pSintese.Range(referencia).Offset(4, 2).Value2 / _
+                        (conversaoKiloTonelada(arrModuloRural(iModuloRural).rPesoAnimal * _
+                        arrModuloRural(iModuloRural).rNumeroAnimais))
+                    If (arrModuloRural(iModuloRural).rRendimentoCarne > 0) Then
+                        pSintese.Range(referencia).Offset(4, 5).Value2 = _
+                            pSintese.Range(referencia).Offset(4, 2).Value2 / _
+                            conversaoKiloTonelada(arrModuloRural(iModuloRural).rRendimentoCarne)
+                            
+                    Else
+                        pSintese.Range(referencia).Offset(4, 5).Value2 = 0#
+                    
+                    End If
+                            
+                    If (arrModuloRural(iModuloRural).rRendimentoLeite > 0) Then
+                        pSintese.Range(referencia).Offset(4, 6).Value2 = _
+                            pSintese.Range(referencia).Offset(4, 2).Value2 / _
+                            conversaoLitroMetroCubico(arrModuloRural(iModuloRural).rRendimentoLeite)
+                    
+                    Else
+                        pSintese.Range(referencia).Offset(4, 6).Value2 = 0#
+                    End If
+                    
+                    If (arrModuloRural(iModuloRural).rRendimentoOvos > 0) Then
+                        pSintese.Range(referencia).Offset(4, 7).Value2 = _
+                            pSintese.Range(referencia).Offset(4, 2).Value2 / _
+                            conversaoUnidadeMilhar(arrModuloRural(iModuloRural).rRendimentoOvos)
+                    Else
+                        pSintese.Range(referencia).Offset(4, 7).Value2 = 0#
+                    End If
+                End If
+            
+                pSintese.Range(referencia).Offset(9, 5).Value2 = _
+                    arrModuloRural(iModuloRural).EE1_SistemaManejoDejetos_N2O(False)
+                    
+                pSintese.Range(referencia).Offset(9, 7).Value2 = _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_SistemaManejoDejetos_N2O(False))
+                
+                pSintese.Range(referencia).Offset(10, 6).Value2 = _
+                    arrModuloRural(iModuloRural).EE1_SistemaManejoDejetos_CH4(Empty, False)
+                pSintese.Range(referencia).Offset(10, 7).Value2 = _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_SistemaManejoDejetos_CH4(Empty, False))
+                            
+                pSintese.Range(referencia).Offset(11, 6).Value2 = _
+                    arrModuloRural(iModuloRural).EE1_FermentacaoEnterica_CH4(Empty, False)
+                pSintese.Range(referencia).Offset(11, 7).Value2 = _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_FermentacaoEnterica_CH4(Empty, False))
+                    
+            Case eucalipto, parica, pinus, seringueira, teca
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                    conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+                            
+                If (arrModuloRural(iModuloRural).mfAreaFloresta > 0) Then
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        arrModuloRural(iModuloRural).mfAreaFloresta
+                Else
+                    pSintese.Range(referencia).Offset(4, 3).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False) > 0) Then
+                    pSintese.Range(referencia).Offset(4, 4).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False) '* arrModuloRural(iModuloRural).mfAreaFloresta
+                Else
+                    pSintese.Range(referencia).Offset(4, 4).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).mfNumeroArvores > 0) Then
+                    pSintese.Range(referencia).Offset(4, 5).Value2 = (arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))) / _
+                        arrModuloRural(iModuloRural).mfNumeroArvores '* arrModuloRural(iModuloRural).mfAreaFloresta
+                                
+                Else
+                    pSintese.Range(referencia).Offset(4, 5).Value2 = 0
+                End If
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(8, 2).Value2 = arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False)
+                    
+                If (arrModuloRural(iModuloRural).mfAreaFloresta > 0) Then
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = _
+                        arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False) / _
+                        arrModuloRural(iModuloRural).mfAreaFloresta
+                
+                Else
+                    pSintese.Range(referencia).Offset(8, 3).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False) > 0) Then
+                    'pSintese.Range(referencia).Offset(8, 4).Value2 = arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False) / _
+                        '(arrModuloRural(iModuloRural).mfAreaFloresta * arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False))
+                    pSintese.Range(referencia).Offset(8, 4).Value2 = arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False) / _
+                        arrModuloRural(iModuloRural).mfProdutividadeFlorestalVolume(False)
+                
+                Else
+                    pSintese.Range(referencia).Offset(8, 4).Value2 = 0
+                End If
+                
+                If (arrModuloRural(iModuloRural).mfNumeroArvores > 0) Then
+                    pSintese.Range(referencia).Offset(8, 5).Value2 = arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False) / _
+                        arrModuloRural(iModuloRural).mfNumeroArvores
+                
+                Else
+                    pSintese.Range(referencia).Offset(8, 5).Value2 = 0
+                End If
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(13, 4).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                pSintese.Range(referencia).Offset(13, 7).Value2 = arrModuloRural(iModuloRural).EE1_Calagem_CO2(False)
+                
+                pSintese.Range(referencia).Offset(14, 4).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False)
+                pSintese.Range(referencia).Offset(14, 5).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_N2O(False)
+                pSintese.Range(referencia).Offset(14, 7).Value2 = arrModuloRural(iModuloRural).EE1_Ureia_CO2(False) + _
+                    conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_Ureia_N2O(False))
+                
+                pSintese.Range(referencia).Offset(15, 5).Value2 = arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False)
+                pSintese.Range(referencia).Offset(15, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_FertilizanteNitrogenadoSintetico_N2O(False))
+            
+                pSintese.Range(referencia).Offset(16, 5).Value2 = arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False)
+                pSintese.Range(referencia).Offset(16, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_AdubacaoOrganica_N2O(False))
+                
+                pSintese.Range(referencia).Offset(17, 5).Value2 = arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False)
+                pSintese.Range(referencia).Offset(17, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_LixiviacaoEscoamentoSuperficial_N2O(False))
+                
+                pSintese.Range(referencia).Offset(18, 5).Value2 = arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False)
+                pSintese.Range(referencia).Offset(18, 7).Value2 = conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_DeposicaoAtmosferica_N2O(False))
+            
+                pSintese.Range(referencia).Offset(19, 4).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+                pSintese.Range(referencia).Offset(19, 7).Value2 = arrModuloRural(iModuloRural).EE1_SupressaoVegetacaoNativa_CO2(Empty, Empty, Empty, False)
+                
+                Rem Específicas - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(24, 4).Value2 = arrModuloRural(iModuloRural).EUS_Madeira_CO2(False)
+                pSintese.Range(referencia).Offset(25, 4).Value2 = arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+        End Select
+    Next iModuloRural
+    
+    Rem Gráficos
+    ReDim arrLegendas(0) As String
+    arrLegendas(0) = "Emissão total"
+    posicaoGrafico = 2
+    pSintese.Range(pSintese.Range("emissoes_grafico_modulo").Offset(2), _
+        pSintese.Range("emissoes_grafico_modulo").Offset(58)).EntireRow.Insert shift:=xlShiftDown
+    
+    Rem Gráfico 1 - Classe de módulo (agrícola, florestal e pecuária)
+    yMaximo = 0
+    
+    Set graf = pSintese.ChartObjects.Add( _
+        Top:=pSintese.Range("emissoes_grafico_modulo").Offset(posicaoGrafico).Top, _
+        Left:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Width:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 8).Left - pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Height:=pSintese.Range("emissoes_grafico_modulo").Offset(18).Top - pSintese.Range("emissoes_grafico_modulo").Top)
+    
+    Rem Emissões agrícolas
+    ReDim arrValores(0) As Variant
+    arrValores(0) = 0
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        If (arrModuloRural(iModuloRural).mModulo = algodao Or _
+            arrModuloRural(iModuloRural).mModulo = arroz Or _
+            arrModuloRural(iModuloRural).mModulo = cana Or _
+            arrModuloRural(iModuloRural).mModulo = feijao Or _
+            arrModuloRural(iModuloRural).mModulo = milho Or _
+            arrModuloRural(iModuloRural).mModulo = pastagem Or _
+            arrModuloRural(iModuloRural).mModulo = soja Or _
+            arrModuloRural(iModuloRural).mModulo = trigo) Then
+            
+            arrValores(0) = arrValores(0) + arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False)) + _
+                arrModuloRural(iModuloRural).RBIOG_CO2(False) * -1 + _
+                arrModuloRural(iModuloRural).EUS_MudancaUsoSolo_CO2(Empty, Empty, Empty, False)
+        End If
+    Next iModuloRural
+    
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+    With sr
+        If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+                
+        .Values = arrValores
+        .XValues = arrLegendas
+        .Name = "Agricultura"
+        .HasDataLabels = True
+    End With
+    
+    Rem Emissões da pecuária
+    ReDim arrValores(0)
+    arrValores(0) = 0
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        If (arrModuloRural(iModuloRural).mModulo = pecuaria) Then
+            arrValores(0) = arrValores(0) + arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False))
+        End If
+    Next iModuloRural
+    
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+    With sr
+        If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+                
+        .Values = arrValores
+        .XValues = arrLegendas
+        .Name = "Pecuária"
+        .HasDataLabels = True
+    End With
+    
+    Rem Emissões da silvicultura
+    ReDim arrValores(0)
+    arrValores(0) = 0
+    For iModuloRural = 0 To UBound(arrModuloRural)
+        If (arrModuloRural(iModuloRural).mModulo = eucalipto Or _
+            arrModuloRural(iModuloRural).mModulo = parica Or _
+            arrModuloRural(iModuloRural).mModulo = pinus Or _
+            arrModuloRural(iModuloRural).mModulo = seringueira Or _
+            arrModuloRural(iModuloRural).mModulo = teca) Then
+            
+            arrValores(0) = arrValores(0) + arrModuloRural(iModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                conversao_N2O_CO2eq(arrModuloRural(iModuloRural).EE1_N2O(False)) + _
+                conversao_CH4_CO2eq(arrModuloRural(iModuloRural).EE1_CH4(Empty, False)) + _
+                arrModuloRural(iModuloRural).EUS_CO2(Empty, Empty, Empty, False)
+        End If
+    Next iModuloRural
+    
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+    With sr
+        If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+                
+        .Values = arrValores
+        .XValues = arrLegendas
+        .Name = "Silvicultura"
+        .HasDataLabels = True
+    End With
+    
+    Rem Operações mecanizadas
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+        With sr
+            arrValores(0) = inventarioEmissoes.EE1_CO2 + _
+                conversao_N2O_CO2eq(inventarioEmissoes.EE1_N2O) + _
+                conversao_CH4_CO2eq(inventarioEmissoes.EE1_CH4) + _
+                inventarioEmissoes.EBIOG_CO2
+        
+            If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+            
+            .Values = arrValores
+            .XValues = arrLegendas
+            .Name = "Operações mecanizadas"
+            .HasDataLabels = True
+    End With
+    
+    Rem Compra de energia elétrica
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+    With sr
+        arrValores(0) = inventarioEmissoes.EE2_CO2
+    
+        If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+        
+        .Values = arrValores
+        .XValues = arrLegendas
+        .Name = "Energia elétrica"
+        .HasDataLabels = True
+    End With
+    
+    Rem Transporte da produção
+    Set sr = graf.Chart.SeriesCollection.NewSeries
+        With sr
+            arrValores(0) = inventarioEmissoes.EE3_CO2 + _
+                conversao_N2O_CO2eq(inventarioEmissoes.EE3_N2O) + _
+                conversao_CH4_CO2eq(inventarioEmissoes.EE3_CH4)
+        
+            If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+            
+            .Values = arrValores
+            .XValues = arrLegendas
+            .Name = "Transporte da produção"
+            .HasDataLabels = True
+    End With
+    
+    With graf.Chart.Axes(xlValue, xlPrimary)
+        .TickLabels.NumberFormat = "#.##0"
+        .TickLabelPosition = xlTickLabelPositionNextToAxis
+        .HasMajorGridlines = True
+        .HasTitle = True
+        .AxisTitle.Text = "Emissão total (tCO2 eq.)"
+        
+        .AxisTitle.Font.Size = 12
+        With .AxisTitle.Characters(Start:=19, Length:=5)
+            .Font.Subscript = True
+        End With
+    End With
+    
+    With graf.Chart
+        .ChartType = xlColumnClustered
+        
+        .HasTitle = True
+        .ChartTitle.Text = "Emissões gerais"
+        .ChartTitle.Font.Size = 18
+        
+        .HasLegend = True
+        .Legend.Position = xlLegendPositionBottom
+    
+        .HasAxis(xlCategory, xlPrimary) = False
+        
+        .ChartGroups(1).Overlap = -50
+    End With
+    
+    With graf
+        .RoundedCorners = True
+        .Placement = xlFreeFloating
+        .Shadow = True
+    End With
+    
+    For iModuloRural = 1 To graf.Chart.SeriesCollection.Count
+        graf.Chart.SeriesCollection(iModuloRural).DataLabels.NumberFormat = "#.##0,0"
+        With graf.Chart.Legend.LegendEntries(iModuloRural)
+            .Font.Size = 11
+        End With
+    Next iModuloRural
+    
+    Rem Gráfico 2 - Classe de módulo agropecuário
+    posicaoGrafico = posicaoGrafico + 19
+    ReDim arrValores(0) As Variant
+    ReDim arrLegendas(0) As String
+    yMaximo = 0
+    
+    Set graf = pSintese.ChartObjects.Add( _
+        Top:=pSintese.Range("emissoes_grafico_modulo").Offset(posicaoGrafico).Top, _
+        Left:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Width:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 8).Left - pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Height:=pSintese.Range("emissoes_grafico_modulo").Offset(18).Top - pSintese.Range("emissoes_grafico_modulo").Top)
+    
+    For iModuloRural = 0 To 13
+        For jModuloRural = 0 To UBound(arrModuloRural)
+            If (arrModuloRural(jModuloRural).mModulo = iModuloRural) Then
+            
+                Set sr = graf.Chart.SeriesCollection.NewSeries
+                With sr
+                    arrValores(0) = arrModuloRural(jModuloRural).EE1_CO2(Empty, Empty, Empty, False) + _
+                        conversao_N2O_CO2eq(arrModuloRural(jModuloRural).EE1_N2O(False)) + _
+                        conversao_CH4_CO2eq(arrModuloRural(jModuloRural).EE1_CH4(Empty, False)) + _
+                        arrModuloRural(jModuloRural).RBIOG_CO2(False) * -1 + _
+                        arrModuloRural(jModuloRural).EUS_CO2(Empty, Empty, Empty, False)
+                        
+                    If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+                    
+                    .Values = arrValores
+                    .XValues = arrLegendas
+                    .Name = nomeModulo(arrModuloRural(jModuloRural).mModulo)
+                    .HasDataLabels = True
+                End With
+            End If
+        Next jModuloRural
+    Next iModuloRural
+
+    With graf.Chart.Axes(xlValue, xlPrimary)
+        .TickLabelPosition = xlTickLabelPositionNextToAxis
+        .TickLabels.NumberFormat = "#.##0"
+        .HasMajorGridlines = True
+        .HasTitle = True
+        .AxisTitle.Text = "Emissão total (tCO2 eq.)"
+        .AxisTitle.Font.Size = 12
+        With .AxisTitle.Characters(Start:=19, Length:=5)
+            .Font.Subscript = True
+        End With
+    End With
+    
+    With graf.Chart
+        .ChartType = xlColumnClustered
+        
+        .HasTitle = True
+        .ChartTitle.Text = "Atividade rural"
+        .ChartTitle.Font.Size = 18
+        
+        .HasLegend = True
+        .Legend.Position = xlLegendPositionBottom
+    
+        .HasAxis(xlCategory, xlPrimary) = False
+        
+        .ChartGroups(1).Overlap = -50
+    End With
+    
+    With graf
+        .RoundedCorners = True
+        .Placement = xlFreeFloating
+        .Shadow = True
+    End With
+    
+    For iModuloRural = 1 To graf.Chart.SeriesCollection.Count
+        graf.Chart.SeriesCollection(iModuloRural).DataLabels.NumberFormat = "#.##0,0"
+        With graf.Chart.Legend.LegendEntries(iModuloRural)
+            .Font.Size = 11
+        End With
+    Next iModuloRural
+    
+    Rem Gráfico 3 - por Módulo efetivo
+    ReDim arrValores(0) As Variant
+    ReDim arrLegendas(0) As String
+    posicaoGrafico = posicaoGrafico + 19
+    yMaximo = 0
+    
+    Set graf = pSintese.ChartObjects.Add( _
+        Top:=pSintese.Range("emissoes_grafico_modulo").Offset(posicaoGrafico).Top, _
+        Left:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Width:=pSintese.Range("emissoes_grafico_modulo").Offset(0, 8).Left - pSintese.Range("emissoes_grafico_modulo").Offset(0, 1).Left, _
+        Height:=pSintese.Range("emissoes_grafico_modulo").Offset(18).Top - pSintese.Range("emissoes_grafico_modulo").Top)
+    
+    For iModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+        
+        If (arrModuloRuralEfetivo(iModuloRural).mModulo = protecaoPermanente Or _
+            arrModuloRuralEfetivo(iModuloRural).mModulo = reservaLegal) Then GoTo continuar
+        
+        Set sr = graf.Chart.SeriesCollection.NewSeries
+        
+        With sr
+            arrValores(0) = arrModuloRuralEfetivo(iModuloRural).EE1_CO2(inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado) + _
+                conversao_N2O_CO2eq(arrModuloRuralEfetivo(iModuloRural).EE1_N2O) + _
+                conversao_CH4_CO2eq(arrModuloRuralEfetivo(iModuloRural).EE1_CH4(inventarioEmissoes.estado)) + _
+                arrModuloRuralEfetivo(iModuloRural).RBIOG_CO2 * -1 + _
+                arrModuloRuralEfetivo(iModuloRural).EUS_CO2(inventarioEmissoes.estado, _
+                    inventarioEmissoes.bioma, arrModuloRuralEfetivo(iModuloRural).musTempoTransicao)
+                    
+            If (Math.Abs(arrValores(0)) > yMaximo) Then yMaximo = Math.Abs(arrValores(0))
+            
+            .Values = arrValores
+            .XValues = arrLegendas
+            .Name = nomeModulo(arrModuloRuralEfetivo(iModuloRural).mModulo) + _
+                " (" + arrModuloRuralEfetivo(iModuloRural).mID + ")"
+            .HasDataLabels = True
+        End With
+        
+continuar:
+    Next iModuloRural
+    
+    With graf.Chart.Axes(xlValue, xlPrimary)
+        .TickLabelPosition = xlTickLabelPositionNextToAxis
+        .TickLabels.NumberFormat = "#.##0"
+        .HasMajorGridlines = True
+        .HasTitle = True
+        .AxisTitle.Text = "Emissão total (tCO2 eq.)"
+        .AxisTitle.Font.Size = 12
+        With .AxisTitle.Characters(Start:=19, Length:=5)
+            .Font.Subscript = True
+        End With
+    End With
+    
+    With graf.Chart
+        .ChartType = xlColumnClustered
+        
+        .HasTitle = True
+        .ChartTitle.Text = "Módulo efetivo"
+        .ChartTitle.Font.Size = 18
+        
+        .HasLegend = True
+        .Legend.Position = xlLegendPositionBottom
+    
+        .HasAxis(xlCategory, xlPrimary) = False
+        
+        .ChartGroups(1).Overlap = -50
+    End With
+    
+    With graf
+        .RoundedCorners = True
+        .Placement = xlFreeFloating
+        .Shadow = True
+    End With
+    
+    For iModuloRural = 1 To graf.Chart.SeriesCollection.Count
+        graf.Chart.SeriesCollection(iModuloRural).DataLabels.NumberFormat = "#.##0,0"
+        With graf.Chart.Legend.LegendEntries(iModuloRural)
+            .Font.Size = 11
+        End With
+    Next iModuloRural
+    
+    Rem Estoque de carbono na vegetação nativa
+    referencia = "estoque_carbono"
+    If (moduloDisponivel(protecaoPermanente) = True Or _
+        moduloDisponivel(reservaLegal) = True) Then
+        
+        For jModuloRural = 0 To UBound(arrModuloRuralEfetivo)
+            If (arrModuloRuralEfetivo(jModuloRural).mModulo = modulos.protecaoPermanente Or _
+                arrModuloRuralEfetivo(jModuloRural).mModulo = modulos.reservaLegal) Then
+                iModuloPreservacao = iModuloPreservacao + 1
+            End If
+        Next jModuloRural
+        
+        pSintese.Range(pSintese.Range(referencia).Offset(2, 1), pSintese.Range(referencia).Offset(iModuloPreservacao + 3, 1)).EntireRow.Insert (xlShiftDown)
+        pSintese.Range(referencia).Offset(2, 1).Value2 = "Módulo de preservação"
+        pSintese.Range(referencia).Offset(2, 2).Value2 = "Identificação"
+        pSintese.Range(referencia).Offset(2, 3).Value2 = "Total" + vbNewLine + "(tonelada CO2 eq.)"
+        pSintese.Range(referencia).Offset(2, 4).Value2 = "Por área" + vbNewLine + "(tonelada CO2 eq./hectare)"
+        
+        pSintese.Range(referencia).Offset(2, 3).Characters(Start:=20, Length:=5).Font.Subscript = True
+        pSintese.Range(referencia).Offset(2, 4).Characters(Start:=23, Length:=5).Font.Subscript = True
+        
+        With pSintese.Range(pSintese.Range(referencia).Offset(2, 1), pSintese.Range(referencia).Offset(2, 4))
+            .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+            .Borders(xlInsideVertical).LineStyle = xlContinuous
+            .Borders(xlInsideVertical).Weight = xlThin
+            .Borders(xlInsideVertical).ColorIndex = xlColorIndexAutomatic
+            
+            .HorizontalAlignment = xlCenter
+            .Interior.Color = RGB(217, 217, 217)
+            .Font.Bold = False
+        End With
+        
+        iModuloRural = 1
+        For iModuloPreservacao = 0 To UBound(arrModuloRuralEfetivo)
+            If (arrModuloRuralEfetivo(iModuloPreservacao).mModulo = modulos.protecaoPermanente Or _
+                arrModuloRuralEfetivo(iModuloPreservacao).mModulo = modulos.reservaLegal) Then
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).Value2 = nomeModulo(arrModuloRuralEfetivo(iModuloPreservacao).mModulo)
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).mID
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).NumberFormat = "#,0.0"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).E_AreaPreservacao_CO2( _
+                    inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado)
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).HorizontalAlignment = xlRight
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).IndentLevel = 1
+                    
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).NumberFormat = "#,0.0"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).E_AreaPreservacao_CO2( _
+                    inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado) / arrModuloRuralEfetivo(iModuloPreservacao).pAreaPreservacao
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).HorizontalAlignment = xlRight
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).IndentLevel = 1
+
+                With pSintese.Range(pSintese.Range(referencia).Offset(iModuloRural + 2, 1), _
+                    pSintese.Range(referencia).Offset(iModuloRural + 2, 4))
+                    .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+                    .Borders(xlInsideVertical).LineStyle = xlContinuous
+                    .Borders(xlInsideVertical).Weight = xlThin
+                    .Borders(xlInsideVertical).ColorIndex = xlColorIndexAutomatic
+                End With
+                
+                Rem Relatório
+                With pRelatorio.Range("relatorio_secao_estoquecarbono")
+                    .Cells(iModuloRural, 1).Value2 = nomeModulo(arrModuloRuralEfetivo(iModuloPreservacao).mModulo)
+                    .Cells(iModuloRural, 1).HorizontalAlignment = xlLeft
+                    .Cells(iModuloRural, 1).IndentLevel = 1
+                    
+                    .Cells(iModuloRural, 5).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).mID
+                    .Cells(iModuloRural, 5).NumberFormat = "@"
+                    .Cells(iModuloRural, 5).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 10).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).E_AreaPreservacao_CO2( _
+                        inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado)
+                    .Cells(iModuloRural, 10).NumberFormat = "#,0.0"
+                    .Cells(iModuloRural, 10).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 14).Value2 = arrModuloRuralEfetivo(iModuloPreservacao).E_AreaPreservacao_CO2( _
+                        inventarioEmissoes.bioma, inventarioEmissoes.fitoFisionomia, inventarioEmissoes.estado) / _
+                        arrModuloRuralEfetivo(iModuloPreservacao).pAreaPreservacao
+                    .Cells(iModuloRural, 14).NumberFormat = "#,0.0"
+                    .Cells(iModuloRural, 14).HorizontalAlignment = xlCenter
+                    
+                    With pRelatorio.Range(.Cells(iModuloRural, 1), .Cells(iModuloRural, .Columns.Count))
+                        .Borders(xlEdgeBottom).ColorIndex = xlColorIndexAutomatic
+                        .Borders(xlEdgeBottom).Weight = xlThin
+                        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+                    End With
+                End With
+                
+                iModuloRural = iModuloRural + 1
+            End If
+        Next iModuloPreservacao
+    End If
+    
+    Rem Diagnóstico de carbono no solo
+    referencia = "emissoes_diagnostico_carbono"
+    If (moduloDisponivel(algodao) = True Or moduloDisponivel(arroz) = True Or moduloDisponivel(cana) = True Or _
+        moduloDisponivel(feijao) = True Or moduloDisponivel(milho) = True Or moduloDisponivel(soja) = True Or _
+        moduloDisponivel(trigo) = True Or moduloDisponivel(pastagem) = True Or moduloDisponivel(eucalipto) Or _
+        moduloDisponivel(parica) = True Or moduloDisponivel(pinus) = True Or moduloDisponivel(seringueira) Or _
+        moduloDisponivel(teca)) Then
+        pSintese.Range(referencia).Offset(2, 1).Value2 = "Módulo agropecuário"
+        pSintese.Range(referencia).Offset(2, 2).Value2 = "Identificação"
+        pSintese.Range(referencia).Offset(2, 3).Value2 = "Textura"
+        pSintese.Range(referencia).Offset(2, 4).Value2 = "Teor de argila" + vbNewLine + "(%)"
+        pSintese.Range(referencia).Offset(2, 5).Value2 = "Teor de Carbono" + vbNewLine + "no solo (%)"
+        pSintese.Range(referencia).Offset(2, 6).Value2 = "Estoque de Carbono" + vbNewLine + "(Mg/hectare)"
+        pSintese.Range(referencia).Offset(2, 7).Value2 = "Classificação"
+        
+        With pSintese.Range(pSintese.Range(referencia).Offset(2, 1), pSintese.Range(referencia).Offset(2, 7))
+            .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+            .Borders(xlInsideVertical).LineStyle = xlContinuous
+            .Borders(xlInsideVertical).Weight = xlThin
+            .Borders(xlInsideVertical).ColorIndex = xlColorIndexAutomatic
+            
+            .HorizontalAlignment = xlCenter
+            .Interior.Color = RGB(217, 217, 217)
+        End With
+        
+        iModuloRural = 1
+        For iModuloAgricola = 0 To UBound(arrModuloRuralEfetivo)
+            If (arrModuloRuralEfetivo(iModuloAgricola).mModulo <> pecuaria And _
+                arrModuloRuralEfetivo(iModuloAgricola).mModulo <> protecaoPermanente And _
+                arrModuloRuralEfetivo(iModuloAgricola).mModulo <> reservaLegal) Then
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).Value2 = nomeModulo(arrModuloRuralEfetivo(iModuloAgricola).mModulo)
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 1).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).Value2 = arrModuloRuralEfetivo(iModuloAgricola).mID
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 2).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTexturaSolo
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 3).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).NumberFormat = "0.00"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTeorArgila
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).HorizontalAlignment = xlRight
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 4).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 5).NumberFormat = "0.00"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 5).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTeorCarbono
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 5).HorizontalAlignment = xlRight
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 5).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 6).NumberFormat = "0.00"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 6).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musEstoqueCarbono
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 6).HorizontalAlignment = xlRight
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 6).IndentLevel = 1
+                
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 7).NumberFormat = "@"
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 7).Value2 = diagnosticoCarbonoSoloTeorArgila(arrModuloRuralEfetivo(iModuloAgricola).musTeorArgila, _
+                    arrModuloRuralEfetivo(iModuloAgricola).musTeorCarbono)
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 7).Font.Bold = True
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 7).HorizontalAlignment = xlLeft
+                pSintese.Range(referencia).Offset(iModuloRural + 2, 7).IndentLevel = 1
+                
+                With pSintese.Range(referencia).Offset(iModuloRural + 2, 7)
+                    Select Case .Value2
+                        Case "Baixo"
+                            .Font.Color = RGB(255, 0, 0)
+                        Case "Médio"
+                            .Font.Color = RGB(226, 107, 10)
+                        Case "Adequado"
+                            .Font.Color = RGB(0, 0, 255)
+                        Case "Alto"
+                            .Font.Color = RGB(51, 153, 51)
+                    End Select
+                End With
+                
+                With pSintese.Range(pSintese.Range(referencia).Offset(iModuloRural + 2, 1), _
+                    pSintese.Range(referencia).Offset(iModuloRural + 2, 7))
+                    .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+                    .Borders(xlInsideVertical).LineStyle = xlContinuous
+                    .Borders(xlInsideVertical).Weight = xlThin
+                    .Borders(xlInsideVertical).ColorIndex = xlColorIndexAutomatic
+                End With
+                
+                Rem Relatório
+                With pRelatorio.Range("relatorio_secao_diagnosticomateriaorganica")
+                    .Cells(iModuloRural, 1).Value2 = nomeModulo(arrModuloRuralEfetivo(iModuloAgricola).mModulo)
+                    .Cells(iModuloRural, 1).HorizontalAlignment = xlLeft
+                    .Cells(iModuloRural, 1).IndentLevel = 1
+                    
+                    .Cells(iModuloRural, 4).Value2 = arrModuloRuralEfetivo(iModuloAgricola).mID
+                    .Cells(iModuloRural, 4).NumberFormat = "@"
+                    .Cells(iModuloRural, 4).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 8).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTexturaSolo
+                    .Cells(iModuloRural, 8).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 11).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTeorArgila
+                    .Cells(iModuloRural, 11).NumberFormat = "0.00"
+                    .Cells(iModuloRural, 11).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 13).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musTeorCarbono
+                    .Cells(iModuloRural, 13).NumberFormat = "0.00"
+                    .Cells(iModuloRural, 13).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 15).Value2 = arrModuloRuralEfetivo(iModuloAgricola).musEstoqueCarbono
+                    .Cells(iModuloRural, 15).NumberFormat = "0.00"
+                    .Cells(iModuloRural, 15).HorizontalAlignment = xlCenter
+                    
+                    .Cells(iModuloRural, 17).Value2 = diagnosticoCarbonoSoloTeorArgila(arrModuloRuralEfetivo(iModuloAgricola).musTeorArgila, _
+                        arrModuloRuralEfetivo(iModuloAgricola).musTeorCarbono)
+                    .Cells(iModuloRural, 17).NumberFormat = "0.00"
+                    .Cells(iModuloRural, 17).HorizontalAlignment = xlCenter
+                    
+                    With .Cells(iModuloRural, 17)
+                        Select Case .Value2
+                            Case "Baixo"
+                                .Font.Color = RGB(255, 0, 0)
+                            Case "Médio"
+                                .Font.Color = RGB(226, 107, 10)
+                            Case "Adequado"
+                                .Font.Color = RGB(0, 0, 255)
+                            Case "Alto"
+                                .Font.Color = RGB(51, 153, 51)
+                        End Select
+                    End With
+                    
+                    With pRelatorio.Range(.Cells(iModuloRural, 1), .Cells(iModuloRural, .Columns.Count))
+                        .Borders(xlEdgeBottom).ColorIndex = xlColorIndexAutomatic
+                        .Borders(xlEdgeBottom).Weight = xlThin
+                        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+                    End With
+                End With
+                
+                iModuloRural = iModuloRural + 1
+            End If
+        Next iModuloAgricola
+        
+        pSintese.Range(referencia).Offset(iModuloRural + 2, 7).Value2 = "Classificação da textura: Embrapa, 1999."
+        With pSintese.Range(pSintese.Range(referencia).Offset(iModuloRural + 2, 1), _
+            pSintese.Range(referencia).Offset(iModuloRural + 2, 7))
+            .Merge
+            .HorizontalAlignment = xlRight
+            
+            .Font.Italic = True
+        End With
+        
+        pSintese.Range(referencia).Offset(iModuloRural + 1 + 2, 7).Value2 = "Diagnóstico de carbono no solo: Adaptado de Sousa e Lobato, 2004."
+        With pSintese.Range(pSintese.Range(referencia).Offset(iModuloRural + 1 + 2, 1), _
+            pSintese.Range(referencia).Offset(iModuloRural + 1 + 2, 7))
+            .Merge
+            .HorizontalAlignment = xlRight
+            
+            .Font.Italic = True
+        End With
+        
+        With pSintese.Range(referencia).Offset(iModuloRural + 1 + 3, 1)
+            .Hyperlinks.Add Anchor:=.Offset(0, 0), Address:="", SubAddress:=pSintese.Range("A1").Address
+            
+            .Value2 = "Voltar ao topo"
+            .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+            .Interior.Color = RGB(217, 217, 217)
+            .Font.Bold = True
+            .Font.Underline = False
+            .Font.Name = "Arial"
+            .Font.Size = 10
+            .Font.Color = RGB(0, 0, 0)
+        End With
+    
+    Else
+        With pSintese.Range(referencia).Offset(2, 1)
+            .Hyperlinks.Add Anchor:=.Offset(0, 0), Address:="", SubAddress:=pSintese.Range("A1").Address
+            
+            .Value2 = "Voltar ao topo"
+            .BorderAround LineStyle:=xlContinuous, Weight:=xlThin, ColorIndex:=xlColorIndexAutomatic
+            .Interior.Color = RGB(217, 217, 217)
+            .Font.Bold = True
+            .Font.Underline = False
+            .Font.Name = "Arial"
+            .Font.Size = 10
+            .Font.Color = RGB(0, 0, 0)
+        End With
+        
+    End If
+    
+    Call controlarLinhasOcultas
+End Sub
+
+Private Sub formatarValorDecimal(ByRef rg As Range, Optional nCasasDecimais As Integer = 2)
+    Dim formatoNumerico As String
+    formatoNumerico = "#,0."
+    
+    If (rg.Value = 0#) Then
+        GoTo formatar
+    Else
+        nCasasDecimais = 2
+        Do While (Round(rg.Value2, nCasasDecimais) = 0#)
+            nCasasDecimais = nCasasDecimais + 1
+        Loop
+    End If
+    
+formatar:
+    rg.Value2 = Round(rg.Value, nCasasDecimais)
+    
+    For nCasasDecimais = nCasasDecimais To 1 Step -1
+        formatoNumerico = formatoNumerico & "0"
+    Next nCasasDecimais
+    rg.NumberFormat = formatoNumerico
+
+End Sub
+
+Private Sub formatarBindEmissoes()
+    Dim referencia As String, iModuloRural As Integer, moduloRural As modulos
+    
+    referencia = "emissoes_escopo"
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 3))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 5))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 6))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 7))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 8))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(5, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(5, 5))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(5, 8))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 3))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 5))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 6))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 7))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 8))
+    
+    referencia = "emissoes_usosolo"
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(2, 4))
+    
+    referencia = "emissoes_biogenicas"
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(2, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+    
+    referencia = "emissoes_indicadores"
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(2, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 4))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(11, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(11, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(13, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(13, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(26, 4))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(28, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(28, 4), 4)
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(30, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(30, 4), 4)
+    
+    referencia = "emissoes_detalhe_geral"
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(5, 2))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(6, 2))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(10, 2))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 5))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 6))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 7))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 4))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 4))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 5))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 6))
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 7))
+    
+    Call formatarValorDecimal(pSintese.Range(referencia).Offset(30, 4))
+    
+    Rem Emissões por atividade agropecuaria
+    For iModuloRural = 0 To 13
+        moduloRural = iModuloRural
+        Select Case moduloRural
+            Case algodao
+                referencia = "emissoes_detalhe_algodao"
+            
+            Case arroz
+                referencia = "emissoes_detalhe_arroz"
+            
+            Case cana
+                referencia = "emissoes_detalhe_cana"
+            
+            Case feijao
+                referencia = "emissoes_detalhe_feijao"
+            
+            Case milho
+                referencia = "emissoes_detalhe_milho"
+            
+            Case soja
+                referencia = "emissoes_detalhe_soja"
+            
+            Case trigo
+                referencia = "emissoes_detalhe_trigo"
+            
+            Case pastagem
+                referencia = "emissoes_detalhe_pastagem"
+            
+            Case pecuaria
+                referencia = "emissoes_detalhe_pecuaria"
+            
+            Case eucalipto
+                referencia = "emissoes_detalhe_eucalipto"
+            
+            Case parica
+                referencia = "emissoes_detalhe_parica"
+            
+            Case pinus
+                referencia = "emissoes_detalhe_pinus"
+            
+            Case seringueira
+                referencia = "emissoes_detalhe_seringueira"
+            
+            Case teca
+                referencia = "emissoes_detalhe_teca"
+        End Select
+        
+        Select Case moduloRural
+            Case pastagem
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 3))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 3))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(12, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(12, 3))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(22, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(22, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(24, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(24, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(24, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 7))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(30, 4))
+                
+            Case pecuaria
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 6))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 7))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(9, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(9, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(10, 6))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(10, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(11, 6))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(11, 7))
+                
+            Case algodao, arroz, cana, feijao, milho, soja, trigo
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 4))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(12, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(12, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(12, 4))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(19, 7))
+                If (moduloRural = arroz) Then
+                    Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 6))
+                Else
+                    Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 5))
+                End If
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(20, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(21, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(22, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(22, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(23, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(24, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(24, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 6))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(25, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(26, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(26, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(26, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(27, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(27, 7))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(32, 4))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(37, 4))
+            
+            Case eucalipto, parica, pinus, seringueira, teca
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 5))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 2))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 3))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(8, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(4, 5))
+                
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(13, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(13, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(14, 4))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(14, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(14, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(15, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(16, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(16, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(17, 7))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 5))
+                Call formatarValorDecimal(pSintese.Range(referencia).Offset(18, 7))
+        End Select
+        
+    Next iModuloRural
+    
+End Sub
+
+Public Sub limparBindEmissoes(Optional recuarNiveis As Boolean = False)
+    Dim referencia As String, iModuloRural As Integer, moduloRural As modulos, valorPadrao As Variant
+    valorPadrao = 0#
+    
+    If (recuarNiveis = True) Then pSintese.Outline.ShowLevels (1)
+    
+    Rem Gráficos
+    If (pSintese.ChartObjects.Count > 0) Then
+        pSintese.ChartObjects.Delete
+    End If
+    
+    If (pSintese.Range("emissoes_grafico_modulo").Address <> _
+        pSintese.Range("emissoes_detalhe_geral").Offset(-4, 0).Address) Then
+        pSintese.Range(pSintese.Range("emissoes_grafico_modulo").Offset(2, 0), _
+            pSintese.Range("emissoes_detalhe_geral").Offset(-3, 0)).EntireRow.Delete
+    End If
+    
+    Rem Emissões por escopo
+    pSintese.Range(pSintese.Range("emissoes_escopo").Offset(4, 2), pSintese.Range("emissoes_escopo").Offset(4, 8)).Value2 = valorPadrao
+    pSintese.Range("emissoes_escopo").Offset(5, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_escopo").Offset(5, 5).Value2 = valorPadrao
+    pSintese.Range("emissoes_escopo").Offset(5, 8).Value2 = valorPadrao
+    pSintese.Range(pSintese.Range("emissoes_escopo").Offset(6, 2), pSintese.Range("emissoes_escopo").Offset(6, 8)).Value2 = valorPadrao
+    
+    Rem Emissões de uso do solo
+    pSintese.Range("emissoes_usosolo").Offset(2, 4).Value2 = valorPadrao
+    
+    Rem Emissões por processos biogênicos
+    pSintese.Range("emissoes_biogenicas").Offset(2, 4).Value2 = valorPadrao
+    pSintese.Range("emissoes_biogenicas").Offset(4, 4).Value2 = valorPadrao
+    
+    Rem Indicadores de eficiência
+    pSintese.Range("emissoes_indicadores").Offset(2, 4).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(4, 4).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(6, 4).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(8, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(11, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(13, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(13, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(15, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(15, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(17, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(17, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(19, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(19, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(21, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(21, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(23, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(23, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(26, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(28, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(28, 4).Value2 = valorPadrao
+    
+    pSintese.Range("emissoes_indicadores").Offset(30, 2).Value2 = valorPadrao
+    pSintese.Range("emissoes_indicadores").Offset(30, 4).Value2 = valorPadrao
+    
+    Rem Emissões gerais
+    referencia = "emissoes_detalhe_geral"
+    pSintese.Range(referencia).Offset(4, 2).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(5, 2).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(6, 2).Value2 = valorPadrao
+    
+    pSintese.Range(referencia).Offset(10, 2).Value2 = valorPadrao
+
+    pSintese.Range(referencia).Offset(15, 4).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(15, 5).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(15, 6).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(15, 7).Value2 = valorPadrao
+    
+    pSintese.Range(referencia).Offset(20, 4).Value2 = valorPadrao
+
+    pSintese.Range(referencia).Offset(25, 4).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(25, 5).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(25, 6).Value2 = valorPadrao
+    pSintese.Range(referencia).Offset(25, 7).Value2 = valorPadrao
+    
+    pSintese.Range(referencia).Offset(30, 4).Value2 = valorPadrao
+    
+    For iModuloRural = 0 To 13
+        moduloRural = iModuloRural
+        Select Case moduloRural
+            Case modulos.algodao
+                referencia = "emissoes_detalhe_algodao"
+            
+            Case modulos.arroz
+                referencia = "emissoes_detalhe_arroz"
+            
+            Case modulos.cana
+                referencia = "emissoes_detalhe_cana"
+            
+            Case modulos.feijao
+                referencia = "emissoes_detalhe_feijao"
+            
+            Case modulos.milho
+                referencia = "emissoes_detalhe_milho"
+                
+            Case modulos.pastagem
+                referencia = "emissoes_detalhe_pastagem"
+                
+            Case modulos.pecuaria
+                referencia = "emissoes_detalhe_pecuaria"
+                
+            Case modulos.soja
+                referencia = "emissoes_detalhe_soja"
+                
+            Case modulos.trigo
+                referencia = "emissoes_detalhe_trigo"
+                
+            Case modulos.eucalipto
+                referencia = "emissoes_detalhe_eucalipto"
+            
+            Case modulos.parica
+                referencia = "emissoes_detalhe_parica"
+            
+            Case modulos.pinus
+                referencia = "emissoes_detalhe_pinus"
+            
+            Case modulos.seringueira
+                referencia = "emissoes_detalhe_seringueira"
+            
+            Case modulos.teca
+                referencia = "emissoes_detalhe_teca"
+            
+        End Select
+        
+        Select Case moduloRural
+            Case modulos.algodao, modulos.arroz, modulos.cana, modulos.feijao, _
+                modulos.milho, modulos.soja, modulos.trigo
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 4).Value2 = valorPadrao
+        
+                Rem Resumo - Remoções biogênicas
+                pSintese.Range(referencia).Offset(8, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 4).Value2 = valorPadrao
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(12, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(12, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(12, 4).Value2 = valorPadrao
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(17, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(17, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 7).Value2 = valorPadrao
+                
+                pSintese.Range(referencia).Offset(19, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(19, 7).Value2 = valorPadrao
+                If (moduloRural = arroz) Then
+                    pSintese.Range(referencia).Offset(20, 6).Value2 = valorPadrao
+                Else
+                    pSintese.Range(referencia).Offset(20, 5).Value2 = valorPadrao
+                End If
+                pSintese.Range(referencia).Offset(20, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(21, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(21, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(22, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(22, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(23, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(23, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(24, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(24, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 6).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(26, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(26, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(26, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(27, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(27, 7).Value2 = valorPadrao
+                
+                Rem Específicas - Processos biogênicos
+                pSintese.Range(referencia).Offset(32, 4).Value2 = valorPadrao
+                
+                Rem Específicas - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(37, 4).Value2 = valorPadrao
+            
+            Case modulos.pastagem
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 3).Value2 = valorPadrao
+                
+                Rem Resumo - Remoções biogênicas
+                pSintese.Range(referencia).Offset(8, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 3).Value2 = valorPadrao
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(12, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(12, 3).Value2 = valorPadrao
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(17, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(17, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(19, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(19, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(20, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(20, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(21, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(21, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(22, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(22, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(23, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(23, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(24, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(24, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(24, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 7).Value2 = valorPadrao
+                
+                Rem Específicas - Processos biogênicos
+                pSintese.Range(referencia).Offset(30, 4).Value2 = valorPadrao
+                
+                Rem Específicas - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(35, 4).Value2 = valorPadrao
+            
+            Case modulos.pecuaria
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 6).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 7).Value2 = valorPadrao
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(9, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(9, 7).Value2 = valorPadrao
+                
+                pSintese.Range(referencia).Offset(10, 6).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(10, 7).Value2 = valorPadrao
+                
+                pSintese.Range(referencia).Offset(11, 6).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(11, 7).Value2 = valorPadrao
+                
+            Case modulos.eucalipto, modulos.parica, modulos.pinus, _
+                modulos.seringueira, modulos.teca
+                Rem Resumo - Escopo 1
+                pSintese.Range(referencia).Offset(4, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(4, 5).Value2 = valorPadrao
+                
+                Rem Resumo - Mudança de uso do solo
+                pSintese.Range(referencia).Offset(8, 2).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 3).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(8, 5).Value2 = valorPadrao
+                
+                Rem Específicas - Escopo 1
+                pSintese.Range(referencia).Offset(13, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(13, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(14, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(14, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(14, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(15, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(15, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(16, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(16, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(17, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(17, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 5).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(18, 7).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(19, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(19, 7).Value2 = valorPadrao
+                
+                Rem Específicas - Uso e Mudança de uso do solo
+                pSintese.Range(referencia).Offset(24, 4).Value2 = valorPadrao
+                pSintese.Range(referencia).Offset(25, 4).Value2 = valorPadrao
+                
+        End Select
+    Next iModuloRural
+    
+    Call formatarBindEmissoes
+    
+    Rem Estoque de carbono na vegetação nativa
+    referencia = "estoque_carbono"
+    If (pSintese.Range("emissoes_diagnostico_carbono").Row - pSintese.Range(referencia).Row > 2) Then
+        pSintese.Range(pSintese.Range(referencia).Offset(1, 0), _
+            pSintese.Range("emissoes_diagnostico_carbono").Offset(-2, 0)).EntireRow.Delete
+    End If
+    
+    With pRelatorio.Range("relatorio_secao_estoquecarbono")
+        .ClearContents
+        .Borders.LineStyle = Excel.XlLineStyle.xlLineStyleNone
+    End With
+    
+    Rem Diagnostico de carbono no solo
+    referencia = "emissoes_diagnostico_carbono"
+    pSintese.Range(pSintese.Range(referencia).Offset(1, 0), _
+        pSintese.Range(referencia).Offset(100, 0)).EntireRow.Delete
+    
+    With pRelatorio.Range("relatorio_secao_diagnosticomateriaorganica")
+        .ClearContents
+        .Borders.LineStyle = Excel.XlLineStyle.xlLineStyleNone
+    End With
+    
+    Call controlarLinhasOcultas
+    
+    With pRelatorio.Range("relatorio_secao_diagnosticomateriaorganica").Rows(1)
+        .Borders(xlEdgeTop).ColorIndex = xlColorIndexAutomatic
+        .Borders(xlEdgeTop).Weight = xlThin
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+    End With
+End Sub
+
+Private Sub controlarLinhasOcultas()
+On Error GoTo erro
+    pSintese.Range(pSintese.Range("emissoes_diagnostico_carbono").Offset(2, 0), _
+        pSintese.Cells(pSintese.Rows.Count, 1)).EntireRow.Hidden = True
+    
+    If (moduloDisponivel(algodao) = True Or moduloDisponivel(arroz) = True Or _
+        moduloDisponivel(cana) = True Or moduloDisponivel(feijao) = True Or _
+        moduloDisponivel(milho) = True Or moduloDisponivel(soja) = True Or _
+        moduloDisponivel(trigo) = True Or moduloDisponivel(pastagem) = True Or _
+        moduloDisponivel(eucalipto) = True Or moduloDisponivel(parica) = True Or _
+        moduloDisponivel(pinus) = True Or moduloDisponivel(seringueira) = True Or _
+        moduloDisponivel(teca) = True) Then
+        
+        pSintese.Range(pSintese.Range("emissoes_diagnostico_carbono"), pSintese.Range("emissoes_diagnostico_carbono").Offset( _
+            pFormularioEmissoes.ListObjects("tbManejoUsoTerra").DataBodyRange.Rows.Count + 6, 0)).EntireRow.Hidden = False
+        
+    Else
+        pSintese.Range(pSintese.Range("emissoes_diagnostico_carbono"), _
+            pSintese.Range("emissoes_diagnostico_carbono").Offset(3, 0)).EntireRow.Hidden = False
+    
+    End If
+    
+    Exit Sub
+erro:
+    MsgBox Err.Description, vbOKOnly + vbCritical + vbDefaultButton1, "Ocultar linhas da síntese das emissões"
+End Sub
+
